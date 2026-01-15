@@ -3,7 +3,6 @@ package com.denysshulhin.pulsetorch.feature.capture
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,57 +19,67 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.denysshulhin.pulsetorch.core.design.components.PTSurfaceCard
-import com.denysshulhin.pulsetorch.core.design.components.PTSecondaryButton
-import com.denysshulhin.pulsetorch.core.design.components.PTPrimaryButton
-import com.denysshulhin.pulsetorch.core.design.components.PTStatusBadge
-import com.denysshulhin.pulsetorch.core.design.components.PTStereoMeter
 import com.denysshulhin.pulsetorch.core.design.components.PTIconButton
 import com.denysshulhin.pulsetorch.core.design.components.PTModeTabs
+import com.denysshulhin.pulsetorch.core.design.components.PTPrimaryButton
+import com.denysshulhin.pulsetorch.core.design.components.PTSecondaryButton
+import com.denysshulhin.pulsetorch.core.design.components.PTStatusBadge
+import com.denysshulhin.pulsetorch.core.design.components.PTStereoMeter
+import com.denysshulhin.pulsetorch.core.design.components.PTSurfaceCard
 import com.denysshulhin.pulsetorch.core.design.components.PulseTorchScreen
 import com.denysshulhin.pulsetorch.core.design.theme.PTColor
 import com.denysshulhin.pulsetorch.core.design.theme.PTDimen
+import com.denysshulhin.pulsetorch.domain.model.AppUiState
+import com.denysshulhin.pulsetorch.domain.model.Mode
+import com.denysshulhin.pulsetorch.domain.model.toTabIndex
 
 @Composable
 fun SystemCaptureScreen(
+    state: AppUiState,
     onBack: () -> Unit,
-    onSwitchToMic: () -> Unit,
-    onOpenFile: () -> Unit,
-    onOpenSystem: () -> Unit,
-    onOpenMic: () -> Unit
+    onSelectMode: (Mode) -> Unit,
+    onToggleRunning: () -> Unit
 ) {
-    PulseTorchScreen(background = PTColor.BackgroundCapture, glowTop = PTColor.CardBlue, glowBottom = PTColor.CardBlue) {
+    val s = state.settings
+
+    PulseTorchScreen(
+        background = PTColor.BackgroundCapture,
+        glowTop = PTColor.CardBlue,
+        glowBottom = PTColor.CardBlue
+    ) {
         Column(
             modifier = Modifier
                 .padding(horizontal = PTDimen.ScreenHPadding)
                 .padding(top = 8.dp, bottom = 18.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // header
-            Row(
-                modifier = Modifier.height(56.dp),
-                verticalAlignment = Alignment.CenterVertically
+            // top bar (proper centering)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
             ) {
                 PTIconButton(onClick = onBack) {
                     Icon(Icons.Outlined.ArrowBack, "Back", tint = PTColor.White)
                 }
-                Spacer(Modifier.weight(1f))
+
                 Text(
                     text = "System Audio Capture",
                     style = MaterialTheme.typography.titleMedium,
-                    color = PTColor.White
+                    color = PTColor.White,
+                    modifier = Modifier.align(Alignment.Center)
                 )
-                Spacer(Modifier.weight(1f))
-                Spacer(Modifier.height(40.dp))
+
+                Spacer(modifier = Modifier.align(Alignment.CenterEnd))
             }
 
             PTModeTabs(
-                selectedIndex = 1,
-                onSelect = {
-                    when (it) {
-                        0 -> onOpenFile()
-                        1 -> onOpenSystem()
-                        2 -> onOpenMic()
+                selectedIndex = s.mode.toTabIndex(),
+                onSelect = { idx ->
+                    when (idx) {
+                        0 -> onSelectMode(Mode.FILE)
+                        1 -> onSelectMode(Mode.SYSTEM)
+                        else -> onSelectMode(Mode.MIC)
                     }
                 }
             )
@@ -78,14 +87,11 @@ fun SystemCaptureScreen(
             Spacer(Modifier.height(10.dp))
 
             Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                // info card
                 PTSurfaceCard(modifier = Modifier.fillMaxWidth()) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Box(
-                            modifier = Modifier
-                                .height(40.dp)
-                                .padding(top = 2.dp),
-                            contentAlignment = Alignment.TopCenter
+                            modifier = Modifier.height(24.dp),
+                            contentAlignment = Alignment.CenterStart
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.WarningAmber,
@@ -93,18 +99,16 @@ fun SystemCaptureScreen(
                                 tint = PTColor.TextSecondary
                             )
                         }
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(
-                                text = "Capture Limitations",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = PTColor.White
-                            )
-                            Text(
-                                text = "Captures internal audio directly. Note: Does not work with Apple Music or Spotify due to DRM. Works best with local files or YouTube.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = PTColor.TextSecondary
-                            )
-                        }
+                        Text(
+                            text = "Capture Limitations",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = PTColor.White
+                        )
+                        Text(
+                            text = "Captures internal audio directly. Note: Does not work with Apple Music or Spotify due to DRM. Works best with local files or YouTube.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = PTColor.TextSecondary
+                        )
                     }
                 }
 
@@ -113,7 +117,9 @@ fun SystemCaptureScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(18.dp)
                 ) {
-                    PTStatusBadge("Status: Capturing")
+                    PTStatusBadge(
+                        if (state.isRunning) "Status: Capturing" else "Status: Idle"
+                    )
                     Box(modifier = Modifier.fillMaxWidth()) {
                         PTStereoMeter()
                     }
@@ -122,7 +128,7 @@ fun SystemCaptureScreen(
 
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 PTPrimaryButton(
-                    text = "Start Capture",
+                    text = if (state.isRunning) "Stop Capture" else "Start Capture",
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Outlined.RadioButtonChecked,
@@ -130,14 +136,13 @@ fun SystemCaptureScreen(
                             tint = PTColor.BackgroundCapture
                         )
                     },
-                    onClick = {}
+                    onClick = onToggleRunning
                 )
+
                 PTSecondaryButton(
                     text = "Switch to Mic",
-                    leadingIcon = {
-                        Icon(Icons.Outlined.Mic, null, tint = PTColor.TextSecondary)
-                    },
-                    onClick = onSwitchToMic
+                    leadingIcon = { Icon(Icons.Outlined.Mic, null, tint = PTColor.TextSecondary) },
+                    onClick = { onSelectMode(Mode.MIC) }
                 )
             }
         }

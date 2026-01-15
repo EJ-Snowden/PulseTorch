@@ -1,6 +1,7 @@
 package com.denysshulhin.pulsetorch.feature.file
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,39 +24,51 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
-import com.denysshulhin.pulsetorch.core.design.components.PTSurfaceCard
 import com.denysshulhin.pulsetorch.core.design.components.PTIconButton
 import com.denysshulhin.pulsetorch.core.design.components.PTModeTabs
+import com.denysshulhin.pulsetorch.core.design.components.PTSurfaceCard
 import com.denysshulhin.pulsetorch.core.design.components.PulseTorchScreen
 import com.denysshulhin.pulsetorch.core.design.theme.PTColor
 import com.denysshulhin.pulsetorch.core.design.theme.PTDimen
+import com.denysshulhin.pulsetorch.domain.model.AppUiState
+import com.denysshulhin.pulsetorch.domain.model.Mode
+import com.denysshulhin.pulsetorch.domain.model.toTabIndex
 
 @Composable
 fun FilePlayerScreen(
+    state: AppUiState,
     onBack: () -> Unit,
     onUseInHome: () -> Unit,
-    onOpenFile: () -> Unit,
-    onOpenSystem: () -> Unit,
-    onOpenMic: () -> Unit
+    onSelectMode: (Mode) -> Unit
 ) {
+    val s = state.settings
     var progress by remember { mutableFloatStateOf(0.35f) }
 
-    PulseTorchScreen(background = PTColor.BackgroundFile, glowTop = PTColor.CardBlue, glowBottom = PTColor.CardBlue) {
+    PulseTorchScreen(
+        background = PTColor.BackgroundFile,
+        glowTop = PTColor.CardBlue,
+        glowBottom = PTColor.CardBlue
+    ) {
         Column(
             modifier = Modifier
                 .padding(horizontal = PTDimen.ScreenHPadding)
                 .padding(top = 8.dp, bottom = 18.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // top bar
-            Row(
-                modifier = Modifier.height(56.dp),
-                verticalAlignment = Alignment.CenterVertically
+            // top bar (proper centering)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
             ) {
                 PTIconButton(onClick = onBack) {
                     Icon(
@@ -64,23 +77,24 @@ fun FilePlayerScreen(
                         tint = PTColor.White.copy(alpha = 0.8f)
                     )
                 }
-                Spacer(Modifier.weight(1f))
+
                 Text(
                     text = "File",
                     style = MaterialTheme.typography.titleMedium,
-                    color = PTColor.White
+                    color = PTColor.White,
+                    modifier = Modifier.align(Alignment.Center)
                 )
-                Spacer(Modifier.weight(1f))
-                Spacer(Modifier.size(40.dp))
+
+                Spacer(modifier = Modifier.align(Alignment.CenterEnd))
             }
 
             PTModeTabs(
-                selectedIndex = 0,
-                onSelect = {
-                    when (it) {
-                        0 -> onOpenFile()
-                        1 -> onOpenSystem()
-                        2 -> onOpenMic()
+                selectedIndex = s.mode.toTabIndex(),
+                onSelect = { idx ->
+                    when (idx) {
+                        0 -> onSelectMode(Mode.FILE)
+                        1 -> onSelectMode(Mode.SYSTEM)
+                        else -> onSelectMode(Mode.MIC)
                     }
                 }
             )
@@ -121,7 +135,7 @@ fun FilePlayerScreen(
                     }
                 }
 
-                // waveform
+                // waveform mock
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -169,15 +183,13 @@ fun FilePlayerScreen(
                     )
                 }
 
-                // controls
+                // controls mock
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    PTIconButton(onClick = {}) {
-                        Icon(Icons.Outlined.SkipPrevious, null, tint = PTColor.TextSilver)
-                    }
+                    PTIconButton(onClick = {}) { Icon(Icons.Outlined.SkipPrevious, null, tint = PTColor.TextSilver) }
 
                     Box(
                         modifier = Modifier
@@ -194,18 +206,17 @@ fun FilePlayerScreen(
                         )
                     }
 
-                    PTIconButton(onClick = {}) {
-                        Icon(Icons.Outlined.SkipNext, null, tint = PTColor.TextSilver)
-                    }
+                    PTIconButton(onClick = {}) { Icon(Icons.Outlined.SkipNext, null, tint = PTColor.TextSilver) }
                 }
             }
 
-            // footer action
+            // footer action (now clickable)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
                     .background(PTColor.White.copy(alpha = 0.06f))
+                    .clickable(onClick = onUseInHome)
                     .padding(vertical = 14.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
@@ -223,6 +234,7 @@ fun FilePlayerScreen(
                     modifier = Modifier.size(18.dp)
                 )
             }
+
             Spacer(Modifier.height(6.dp))
         }
     }

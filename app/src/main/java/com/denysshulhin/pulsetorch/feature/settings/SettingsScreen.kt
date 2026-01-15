@@ -20,11 +20,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.BrightnessAuto
 import androidx.compose.material.icons.outlined.Equalizer
+import androidx.compose.material.icons.outlined.FlashlightOn
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.ShutterSpeed
 import androidx.compose.material.icons.outlined.Warning
-import androidx.compose.material.icons.outlined.FlashlightOn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -32,35 +32,38 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.denysshulhin.pulsetorch.core.design.components.PTTextButton
 import com.denysshulhin.pulsetorch.core.design.components.PTIconButton
+import com.denysshulhin.pulsetorch.core.design.components.PTTextButton
 import com.denysshulhin.pulsetorch.core.design.components.PulseTorchScreen
 import com.denysshulhin.pulsetorch.core.design.theme.PTColor
+import com.denysshulhin.pulsetorch.domain.model.AppUiState
 import kotlin.math.roundToInt
 
 @Composable
 fun SettingsScreen(
+    state: AppUiState,
     onBack: () -> Unit,
-    onDone: () -> Unit
+    onDone: () -> Unit,
+    onAutoBrightnessChange: (Boolean) -> Unit,
+    onMaxStrobeHzChange: (Float) -> Unit,
+    onMicGainChange: (Float) -> Unit,
+    onSmoothingChange: (Float) -> Unit,
+    onBassFocusChange: (Boolean) -> Unit,
+    onStrobeWarningChange: (Boolean) -> Unit
 ) {
-    var autoBrightness by remember { mutableStateOf(true) }
-    var maxStrobeHz by remember { mutableFloatStateOf(10f) }
-    var micGain by remember { mutableFloatStateOf(1.4f) }
-    var smoothing by remember { mutableFloatStateOf(0.40f) }
-    var bassFocus by remember { mutableStateOf(true) }
-    var strobeWarning by remember { mutableStateOf(true) }
+    val s = state.settings
 
-    val maxHzLabel = "${maxStrobeHz.roundToInt()}Hz"
+    val maxHzLabel = "${s.maxStrobeHz.roundToInt()}Hz"
     val micLabel = when {
-        micGain < 0.9f -> "Low"
-        micGain < 1.4f -> "Med"
+        s.micGain < 0.9f -> "Low"
+        s.micGain < 1.4f -> "Med"
         else -> "High"
     }
-    val smoothingLabel = "${(smoothing * 100f).roundToInt()}%"
+    val smoothingLabel = "${(s.smoothing * 100f).roundToInt()}%"
 
     PulseTorchScreen(
         background = PTColor.BackgroundSettings,
@@ -96,13 +99,12 @@ fun SettingsScreen(
                 }
             }
 
-            // Scrollable content
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
-                    top = 6.dp,
+                    top = 10.dp,
                     bottom = 20.dp
                 ),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
@@ -125,8 +127,8 @@ fun SettingsScreen(
                             subtitle = "Auto choose torch levels or on/off",
                             trailing = {
                                 Switch(
-                                    checked = autoBrightness,
-                                    onCheckedChange = { autoBrightness = it },
+                                    checked = s.autoBrightness,
+                                    onCheckedChange = onAutoBrightnessChange,
                                     colors = SwitchDefaults.colors(
                                         checkedThumbColor = PTColor.White,
                                         checkedTrackColor = PTColor.PrimarySoft,
@@ -136,6 +138,7 @@ fun SettingsScreen(
                                 )
                             }
                         )
+
                         DividerSoft()
 
                         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -155,8 +158,8 @@ fun SettingsScreen(
                             }
 
                             Slider(
-                                value = maxStrobeHz,
-                                onValueChange = { maxStrobeHz = it },
+                                value = s.maxStrobeHz,
+                                onValueChange = onMaxStrobeHzChange,
                                 valueRange = 1f..20f,
                                 steps = 18,
                                 colors = SliderDefaults.colors(
@@ -192,8 +195,8 @@ fun SettingsScreen(
                             }
 
                             Slider(
-                                value = micGain,
-                                onValueChange = { micGain = it },
+                                value = s.micGain,
+                                onValueChange = onMicGainChange,
                                 valueRange = 0.5f..2.0f,
                                 steps = 14,
                                 colors = SliderDefaults.colors(
@@ -223,8 +226,8 @@ fun SettingsScreen(
                             }
 
                             Slider(
-                                value = smoothing,
-                                onValueChange = { smoothing = it },
+                                value = s.smoothing,
+                                onValueChange = onSmoothingChange,
                                 valueRange = 0f..1f,
                                 colors = SliderDefaults.colors(
                                     thumbColor = PTColor.PrimarySoft,
@@ -242,8 +245,8 @@ fun SettingsScreen(
                             subtitle = "React only to low frequencies",
                             trailing = {
                                 Switch(
-                                    checked = bassFocus,
-                                    onCheckedChange = { bassFocus = it },
+                                    checked = s.bassFocus,
+                                    onCheckedChange = onBassFocusChange,
                                     colors = SwitchDefaults.colors(
                                         checkedThumbColor = PTColor.White,
                                         checkedTrackColor = PTColor.PrimarySoft,
@@ -256,92 +259,86 @@ fun SettingsScreen(
                     }
                 }
 
-            item {
-                SectionTitle("Safety")
-                SectionCard {
-                    SettingsRow(
-                        icon = { Icon(Icons.Outlined.Warning, null, tint = PTColor.TextSilver.copy(alpha = 0.8f)) },
-                        title = "Strobe Warning",
-                        trailing = {
-                            Switch(
-                                checked = strobeWarning,
-                                onCheckedChange = { strobeWarning = it },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = PTColor.White,
-                                    checkedTrackColor = PTColor.PrimarySoft,
-                                    uncheckedThumbColor = PTColor.White,
-                                    uncheckedTrackColor = PTColor.Black.copy(alpha = 0.35f)
-                                )
-                            )
-                        }
-                    )
-                    DividerSoft()
-                    Text(
-                        text = "CAUTION: Prolonged exposure to flashing lights may trigger seizures in photosensitive individuals. Use with caution in public spaces.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = PTColor.TextMuted.copy(alpha = 0.95f),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(PTColor.Black.copy(alpha = 0.20f))
-                            .padding(14.dp)
-                    )
+                item {
+                    SectionTitle("Safety")
                 }
-            }
 
-            item {
-                SectionTitle("Privacy")
-                SectionCard {
-                    SettingsRow(
-                        icon = {
-                            Icon(
-                                Icons.Outlined.Shield,
-                                null,
-                                tint = PTColor.TextSilver.copy(alpha = 0.8f)
-                            )
-                        },
-                        title = "Device-Only Processing",
-                        trailing = {
-                            Row(
-                                modifier = Modifier
-                                    .background(
-                                        PTColor.PrimarySoft.copy(alpha = 0.10f),
-                                        RoundedCornerShape(99.dp)
+                item {
+                    SectionCard {
+                        SettingsRow(
+                            icon = { Icon(Icons.Outlined.Warning, null, tint = PTColor.TextSilver.copy(alpha = 0.8f)) },
+                            title = "Strobe Warning",
+                            trailing = {
+                                Switch(
+                                    checked = s.strobeWarning,
+                                    onCheckedChange = onStrobeWarningChange,
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = PTColor.White,
+                                        checkedTrackColor = PTColor.PrimarySoft,
+                                        uncheckedThumbColor = PTColor.White,
+                                        uncheckedTrackColor = PTColor.Black.copy(alpha = 0.35f)
                                     )
-                                    .border(
-                                        1.dp,
-                                        PTColor.PrimarySoft.copy(alpha = 0.20f),
-                                        RoundedCornerShape(99.dp)
-                                    )
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Canvas(Modifier.size(6.dp)) { drawCircle(PTColor.PrimarySoft) }
-                                Text(
-                                    "ACTIVE",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = PTColor.PrimarySoft
                                 )
                             }
-                        }
-                    )
-                    DividerSoft()
-                    Text(
-                        text = "PulseTorch analyzes audio locally on your device. No raw microphone data is uploaded to the cloud.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = PTColor.TextMuted.copy(alpha = 0.95f),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(PTColor.Black.copy(alpha = 0.20f))
-                            .padding(14.dp)
-                    )
+                        )
+
+                        DividerSoft()
+
+                        Text(
+                            text = "CAUTION: Prolonged exposure to flashing lights may trigger seizures in photosensitive individuals. Use with caution in public spaces.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = PTColor.TextMuted.copy(alpha = 0.95f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(PTColor.Black.copy(alpha = 0.20f))
+                                .padding(14.dp)
+                        )
+                    }
+                }
+
+                item {
+                    SectionTitle("Privacy")
+                }
+
+                item {
+                    SectionCard {
+                        SettingsRow(
+                            icon = { Icon(Icons.Outlined.Shield, null, tint = PTColor.TextSilver.copy(alpha = 0.8f)) },
+                            title = "Device-Only Processing",
+                            trailing = {
+                                Row(
+                                    modifier = Modifier
+                                        .background(PTColor.PrimarySoft.copy(alpha = 0.10f), RoundedCornerShape(99.dp))
+                                        .border(1.dp, PTColor.PrimarySoft.copy(alpha = 0.20f), RoundedCornerShape(99.dp))
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Canvas(Modifier.size(6.dp)) { drawCircle(PTColor.PrimarySoft) }
+                                    Text("ACTIVE", style = MaterialTheme.typography.labelMedium, color = PTColor.PrimarySoft)
+                                }
+                            }
+                        )
+
+                        DividerSoft()
+
+                        Text(
+                            text = "PulseTorch analyzes audio locally on your device. No raw microphone data is uploaded to the cloud.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = PTColor.TextMuted.copy(alpha = 0.95f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(PTColor.Black.copy(alpha = 0.20f))
+                                .padding(14.dp)
+                        )
+                    }
+                }
+
+                item {
+                    Spacer(Modifier.height(10.dp))
+                    FooterBrand()
                 }
             }
-            item {
-                Spacer(Modifier.height(10.dp))
-                FooterBrand()
-            }
-                }
         }
     }
 }
@@ -389,12 +386,7 @@ private fun SettingsRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.bodyLarge, color = PTColor.TextSilver, maxLines = 1)
                 if (subtitle != null) {
-                    Text(
-                        subtitle,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = PTColor.TextMuted,
-                        maxLines = 1
-                    )
+                    Text(subtitle, style = MaterialTheme.typography.labelLarge, color = PTColor.TextMuted, maxLines = 1)
                 }
             }
         }
@@ -419,7 +411,7 @@ private fun FooterBrand() {
             .fillMaxWidth()
             .padding(vertical = 18.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Box(
             modifier = Modifier
@@ -429,5 +421,10 @@ private fun FooterBrand() {
         ) {
             Icon(Icons.Outlined.FlashlightOn, null, tint = PTColor.White, modifier = Modifier.size(18.dp))
         }
+        Text(
+            text = "PULSETORCH",
+            style = MaterialTheme.typography.labelMedium,
+            color = PTColor.White.copy(alpha = 0.55f)
+        )
     }
 }
