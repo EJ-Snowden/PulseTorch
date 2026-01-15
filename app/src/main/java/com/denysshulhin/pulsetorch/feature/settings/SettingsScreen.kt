@@ -6,12 +6,15 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
@@ -37,52 +40,41 @@ import com.denysshulhin.pulsetorch.core.design.components.PTTextButton
 import com.denysshulhin.pulsetorch.core.design.components.PTIconButton
 import com.denysshulhin.pulsetorch.core.design.components.PulseTorchScreen
 import com.denysshulhin.pulsetorch.core.design.theme.PTColor
+import kotlin.math.roundToInt
 
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
     onDone: () -> Unit
 ) {
-    var autoBrightness by remember { mutableStateOf(false) }
-    var strobeRate by remember { mutableFloatStateOf(0.40f) } // 0..1 -> 20Hz label mock
-    var micSensitivity by remember { mutableFloatStateOf(0.75f) }
+    var autoBrightness by remember { mutableStateOf(true) } // torch auto mode
+    var maxStrobeHz by remember { mutableFloatStateOf(10f) } // 1..20
+    var micGain by remember { mutableFloatStateOf(1.4f) } // 0.5..2.0
+    var smoothing by remember { mutableFloatStateOf(0.40f) } // 0..1
     var bassFocus by remember { mutableStateOf(true) }
     var strobeWarning by remember { mutableStateOf(true) }
 
-    PulseTorchScreen(background = PTColor.BackgroundSettings, glowTop = PTColor.CardBlue, glowBottom = PTColor.CardBlue) {
-        Column(
-            modifier = Modifier
-                .padding(horizontal = 16.dp)
-                .padding(top = 6.dp, bottom = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // header (sticky look by just having a darker bar)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(PTColor.BackgroundSettings.copy(alpha = 0.90f))
-                    .padding(horizontal = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                PTIconButton(onClick = onBack) {
-                    Icon(Icons.Outlined.ArrowBack, "Back", tint = PTColor.TextSilver)
-                }
-                Spacer(Modifier.weight(1f))
-                Text("Settings", style = MaterialTheme.typography.titleMedium, color = PTColor.White.copy(alpha = 0.92f))
-                Spacer(Modifier.weight(1f))
-                PTTextButton(text = "Done", onClick = onDone)
-            }
+    val maxHzLabel = "${maxStrobeHz.roundToInt()}Hz"
+    val micLabel = when {
+        micGain < 0.9f -> "Low"
+        micGain < 1.4f -> "Med"
+        else -> "High"
+    }
+    val smoothingLabel = "${(smoothing * 100f).roundToInt()}%"
 
-            Column(
-                modifier = Modifier.padding(horizontal = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp)
-            ) {
+    PulseTorchScreen(background = PTColor.BackgroundSettings, glowTop = PTColor.CardBlue, glowBottom = PTColor.CardBlue) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            item {
                 SectionTitle("Torch Configuration")
                 SectionCard {
-                    // Auto Brightness
                     SettingsRow(
                         icon = { Icon(Icons.Outlined.BrightnessAuto, null, tint = PTColor.TextSilver.copy(alpha = 0.8f)) },
                         title = "Auto Brightness",
+                        subtitle = "Auto choose torch levels or on/off",
                         trailing = {
                             Switch(
                                 checked = autoBrightness,
@@ -97,18 +89,20 @@ fun SettingsScreen(
                         }
                     )
                     DividerSoft()
-                    // Max Strobe Rate
+
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Icon(Icons.Outlined.ShutterSpeed, null, tint = PTColor.TextSilver.copy(alpha = 0.8f))
                                 Text("Max Strobe Rate", style = MaterialTheme.typography.bodyLarge, color = PTColor.TextSilver)
                             }
-                            Text("20Hz", style = MaterialTheme.typography.bodyMedium, color = PTColor.PrimarySoft)
+                            Text(maxHzLabel, style = MaterialTheme.typography.bodyMedium, color = PTColor.PrimarySoft)
                         }
                         Slider(
-                            value = strobeRate,
-                            onValueChange = { strobeRate = it },
+                            value = maxStrobeHz,
+                            onValueChange = { maxStrobeHz = it },
+                            valueRange = 1f..20f,
+                            steps = 18,
                             colors = SliderDefaults.colors(
                                 thumbColor = PTColor.PrimarySoft,
                                 activeTrackColor = PTColor.PrimarySoft,
@@ -117,7 +111,9 @@ fun SettingsScreen(
                         )
                     }
                 }
+            }
 
+            item {
                 SectionTitle("Audio Sync")
                 SectionCard {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -126,11 +122,13 @@ fun SettingsScreen(
                                 Icon(Icons.Outlined.Mic, null, tint = PTColor.TextSilver.copy(alpha = 0.8f))
                                 Text("Mic Sensitivity", style = MaterialTheme.typography.bodyLarge, color = PTColor.TextSilver)
                             }
-                            Text("High", style = MaterialTheme.typography.bodyMedium, color = PTColor.PrimarySoft)
+                            Text(micLabel, style = MaterialTheme.typography.bodyMedium, color = PTColor.PrimarySoft)
                         }
                         Slider(
-                            value = micSensitivity,
-                            onValueChange = { micSensitivity = it },
+                            value = micGain,
+                            onValueChange = { micGain = it },
+                            valueRange = 0.5f..2.0f,
+                            steps = 14,
                             colors = SliderDefaults.colors(
                                 thumbColor = PTColor.PrimarySoft,
                                 activeTrackColor = PTColor.PrimarySoft,
@@ -138,7 +136,31 @@ fun SettingsScreen(
                             )
                         )
                     }
+
                     DividerSoft()
+
+                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Icon(Icons.Outlined.Equalizer, null, tint = PTColor.TextSilver.copy(alpha = 0.8f))
+                                Text("Smoothing", style = MaterialTheme.typography.bodyLarge, color = PTColor.TextSilver)
+                            }
+                            Text(smoothingLabel, style = MaterialTheme.typography.bodyMedium, color = PTColor.PrimarySoft)
+                        }
+                        Slider(
+                            value = smoothing,
+                            onValueChange = { smoothing = it },
+                            valueRange = 0f..1f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = PTColor.PrimarySoft,
+                                activeTrackColor = PTColor.PrimarySoft,
+                                inactiveTrackColor = PTColor.Black.copy(alpha = 0.35f)
+                            )
+                        )
+                    }
+
+                    DividerSoft()
+
                     SettingsRow(
                         icon = { Icon(Icons.Outlined.Equalizer, null, tint = PTColor.TextSilver.copy(alpha = 0.8f)) },
                         title = "Bass Focus",
@@ -157,7 +179,9 @@ fun SettingsScreen(
                         }
                     )
                 }
+            }
 
+            item {
                 SectionTitle("Safety")
                 SectionCard {
                     SettingsRow(
@@ -187,23 +211,42 @@ fun SettingsScreen(
                             .padding(14.dp)
                     )
                 }
+            }
 
+            item {
                 SectionTitle("Privacy")
                 SectionCard {
                     SettingsRow(
-                        icon = { Icon(Icons.Outlined.Shield, null, tint = PTColor.TextSilver.copy(alpha = 0.8f)) },
+                        icon = {
+                            Icon(
+                                Icons.Outlined.Shield,
+                                null,
+                                tint = PTColor.TextSilver.copy(alpha = 0.8f)
+                            )
+                        },
                         title = "Device-Only Processing",
                         trailing = {
                             Row(
                                 modifier = Modifier
-                                    .background(PTColor.PrimarySoft.copy(alpha = 0.10f), RoundedCornerShape(99.dp))
-                                    .border(1.dp, PTColor.PrimarySoft.copy(alpha = 0.20f), RoundedCornerShape(99.dp))
+                                    .background(
+                                        PTColor.PrimarySoft.copy(alpha = 0.10f),
+                                        RoundedCornerShape(99.dp)
+                                    )
+                                    .border(
+                                        1.dp,
+                                        PTColor.PrimarySoft.copy(alpha = 0.20f),
+                                        RoundedCornerShape(99.dp)
+                                    )
                                     .padding(horizontal = 10.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Canvas(Modifier.size(6.dp)) { drawCircle(PTColor.PrimarySoft) }
-                                Text("ACTIVE", style = MaterialTheme.typography.labelMedium, color = PTColor.PrimarySoft)
+                                Text(
+                                    "ACTIVE",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = PTColor.PrimarySoft
+                                )
                             }
                         }
                     )
@@ -218,7 +261,8 @@ fun SettingsScreen(
                             .padding(14.dp)
                     )
                 }
-
+            }
+            item {
                 Spacer(Modifier.height(10.dp))
                 FooterBrand()
             }

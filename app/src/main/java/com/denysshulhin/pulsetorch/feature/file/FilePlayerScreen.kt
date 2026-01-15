@@ -30,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.denysshulhin.pulsetorch.core.design.components.PTSurfaceCard
 import com.denysshulhin.pulsetorch.core.design.components.PTIconButton
+import com.denysshulhin.pulsetorch.core.design.components.PTModeTabs
 import com.denysshulhin.pulsetorch.core.design.components.PulseTorchScreen
 import com.denysshulhin.pulsetorch.core.design.theme.PTColor
 import com.denysshulhin.pulsetorch.core.design.theme.PTDimen
@@ -37,7 +38,10 @@ import com.denysshulhin.pulsetorch.core.design.theme.PTDimen
 @Composable
 fun FilePlayerScreen(
     onBack: () -> Unit,
-    onUseInHome: () -> Unit
+    onUseInHome: () -> Unit,
+    onOpenFile: () -> Unit,
+    onOpenSystem: () -> Unit,
+    onOpenMic: () -> Unit
 ) {
     var progress by remember { mutableFloatStateOf(0.35f) }
 
@@ -69,6 +73,19 @@ fun FilePlayerScreen(
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.size(40.dp))
             }
+
+            PTModeTabs(
+                selectedIndex = 0,
+                onSelect = {
+                    when (it) {
+                        0 -> onOpenFile()
+                        1 -> onOpenSystem()
+                        2 -> onOpenMic()
+                    }
+                }
+            )
+
+            Spacer(Modifier.height(10.dp))
 
             Column(verticalArrangement = Arrangement.spacedBy(22.dp)) {
                 PTSurfaceCard(modifier = Modifier.fillMaxWidth()) {

@@ -26,6 +26,7 @@ import com.denysshulhin.pulsetorch.core.design.components.PTPrimaryButton
 import com.denysshulhin.pulsetorch.core.design.components.PTStatusBadge
 import com.denysshulhin.pulsetorch.core.design.components.PTStereoMeter
 import com.denysshulhin.pulsetorch.core.design.components.PTIconButton
+import com.denysshulhin.pulsetorch.core.design.components.PTModeTabs
 import com.denysshulhin.pulsetorch.core.design.components.PulseTorchScreen
 import com.denysshulhin.pulsetorch.core.design.theme.PTColor
 import com.denysshulhin.pulsetorch.core.design.theme.PTDimen
@@ -33,7 +34,10 @@ import com.denysshulhin.pulsetorch.core.design.theme.PTDimen
 @Composable
 fun SystemCaptureScreen(
     onBack: () -> Unit,
-    onSwitchToMic: () -> Unit
+    onSwitchToMic: () -> Unit,
+    onOpenFile: () -> Unit,
+    onOpenSystem: () -> Unit,
+    onOpenMic: () -> Unit
 ) {
     PulseTorchScreen(background = PTColor.BackgroundCapture, glowTop = PTColor.CardBlue, glowBottom = PTColor.CardBlue) {
         Column(
@@ -59,6 +63,19 @@ fun SystemCaptureScreen(
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.height(40.dp))
             }
+
+            PTModeTabs(
+                selectedIndex = 1,
+                onSelect = {
+                    when (it) {
+                        0 -> onOpenFile()
+                        1 -> onOpenSystem()
+                        2 -> onOpenMic()
+                    }
+                }
+            )
+
+            Spacer(Modifier.height(10.dp))
 
             Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 // info card

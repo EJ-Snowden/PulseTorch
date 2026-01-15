@@ -22,6 +22,7 @@ import com.denysshulhin.pulsetorch.core.design.components.PTPrimaryButton
 import com.denysshulhin.pulsetorch.core.design.components.PTSegmentedControl
 import com.denysshulhin.pulsetorch.core.design.components.PTTopBarCentered
 import com.denysshulhin.pulsetorch.core.design.components.PTIconButton
+import com.denysshulhin.pulsetorch.core.design.components.PTModeTabs
 import com.denysshulhin.pulsetorch.core.design.components.PulseTorchScreen
 import com.denysshulhin.pulsetorch.core.design.components.PTPanelCard
 import com.denysshulhin.pulsetorch.core.design.components.PTSignalRing
@@ -34,7 +35,6 @@ fun HomeControlScreen(
     onOpenFile: () -> Unit,
     onOpenCapture: () -> Unit
 ) {
-    var modeIndex by remember { mutableIntStateOf(2) } // 0 File, 1 System, 2 Mic
     var effectIndex by remember { mutableIntStateOf(2) } // 0 Smooth, 1 Pulse, 2 Strobe
     var sensitivity by remember { mutableFloatStateOf(0.75f) }
     var smoothness by remember { mutableFloatStateOf(0.40f) }
@@ -59,13 +59,14 @@ fun HomeControlScreen(
                 }
             )
 
-            PTSegmentedControl(
-                items = listOf("File", "System", "Mic"),
-                selectedIndex = modeIndex,
-                onSelected = {
-                    modeIndex = it
-                    if (it == 0) onOpenFile()
-                    if (it == 1) onOpenCapture()
+            PTModeTabs(
+                selectedIndex = 2,
+                onSelect = {
+                    when (it) {
+                        0 -> onOpenFile()
+                        1 -> onOpenCapture()
+                        2 -> {}
+                    }
                 }
             )
 
