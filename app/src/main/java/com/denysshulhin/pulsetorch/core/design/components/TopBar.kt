@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,22 +24,27 @@ fun PTTopBarCentered(
     left: (@Composable () -> Unit)? = null,
     right: (@Composable () -> Unit)? = null
 ) {
-    Row(
-        modifier = Modifier.height(56.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
     ) {
-        Box(Modifier.width(48.dp), contentAlignment = Alignment.Center) {
-            left?.invoke()
-        }
+        Box(
+            modifier = Modifier.align(Alignment.CenterStart),
+            contentAlignment = Alignment.Center
+        ) { left?.invoke() }
+
         Text(
             text = title,
             style = MaterialTheme.typography.titleLarge,
-            color = Color.White
+            color = Color.White,
+            modifier = Modifier.align(Alignment.Center)
         )
-        Box(Modifier.width(48.dp), contentAlignment = Alignment.Center) {
-            right?.invoke()
-        }
+
+        Box(
+            modifier = Modifier.align(Alignment.CenterEnd),
+            contentAlignment = Alignment.Center
+        ) { right?.invoke() }
     }
 }
 

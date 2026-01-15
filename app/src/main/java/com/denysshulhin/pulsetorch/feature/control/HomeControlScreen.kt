@@ -1,6 +1,7 @@
 package com.denysshulhin.pulsetorch.feature.control
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -71,8 +72,16 @@ fun HomeControlScreen(
             )
 
             Spacer(Modifier.height(6.dp))
-            PTSignalRing()
+
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                PTSignalRing()
+            }
+
             Spacer(Modifier.height(4.dp))
+
 
             PTPrimaryButton(
                 text = "Start",
