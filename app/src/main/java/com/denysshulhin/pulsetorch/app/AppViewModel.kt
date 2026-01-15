@@ -28,6 +28,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             AppUiState(settings = settings, isRunning = running, statusText = status)
         }.stateIn(viewModelScope, SharingStarted.Eagerly, AppUiState())
 
+    fun setMode(mode: Mode) {
+        // 1) always stop torch when changing mode
+        forceStop()
+
+        // 2) persist mode so UI updates selected tab everywhere
+        viewModelScope.launch {
+            repo.setMode(mode)
+        }
+    }
+
     fun setEffect(effect: Effect) = viewModelScope.launch { repo.setEffect(effect) }
 
     fun setSensitivity(v: Float) = viewModelScope.launch { repo.setSensitivity(v) }
@@ -41,38 +51,34 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setStrobeWarning(v: Boolean) = viewModelScope.launch { repo.setStrobeWarning(v) }
 
     fun forceStop() {
-        // 1) state.isRunning = false
-        // 2) torch OFF
+        isRunning.value = false
+        statusText.value = "IDLE"
         torch.shutdown()
-        // обнови uiState как ты уже делаешь (оставляю твою реализацию)
     }
 
     fun toggleRunning() {
-        // после того как ты переключил isRunning в state:
-        val running = uiState.value.isRunning
+        val willRun = !isRunning.value
+        isRunning.value = willRun
+
+        if (!willRun) {
+            statusText.value = "IDLE"
+            torch.shutdown()
+            return
+        }
 
         if (!torch.isTorchAvailable()) {
-            // можно выставить error/statusText
+            isRunning.value = false
+            statusText.value = "NO TORCH"
             torch.shutdown()
             return
         }
 
-        if (!running) {
-            torch.shutdown()
-            return
-        }
-
-        // пока простой MVP: яркость из autoBrightness или 1.0
         val s = uiState.value.settings
         val level = if (s.autoBrightness) 1f else 0.7f
+
         torch.setLevel(level)
         torch.setEnabled(true)
-    }
-
-    fun setMode(mode: Mode) {
-        // безопасно: смена режима всегда гасит фонарик
-        torch.shutdown()
-        // дальше твоя логика обновления mode в DataStore/state
+        statusText.value = "RUNNING"
     }
 
     override fun onCleared() {
