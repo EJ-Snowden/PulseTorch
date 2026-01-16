@@ -1,15 +1,20 @@
 package com.denysshulhin.pulsetorch.feature.control
 
 import android.Manifest
+import android.content.res.Configuration
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material.icons.outlined.Settings
@@ -20,17 +25,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.denysshulhin.pulsetorch.core.design.components.PTChipRow
-import com.denysshulhin.pulsetorch.core.design.components.PTLabeledSliderPercent
-import com.denysshulhin.pulsetorch.core.design.components.PTPrimaryButton
-import com.denysshulhin.pulsetorch.core.design.components.PTTopBarCentered
 import com.denysshulhin.pulsetorch.core.design.components.PTIconButton
+import com.denysshulhin.pulsetorch.core.design.components.PTLabeledSliderPercent
 import com.denysshulhin.pulsetorch.core.design.components.PTModeTabs
-import com.denysshulhin.pulsetorch.core.design.components.PulseTorchScreen
 import com.denysshulhin.pulsetorch.core.design.components.PTPanelCard
+import com.denysshulhin.pulsetorch.core.design.components.PTPrimaryButton
 import com.denysshulhin.pulsetorch.core.design.components.PTSignalRing
+import com.denysshulhin.pulsetorch.core.design.components.PTTopBarCentered
+import com.denysshulhin.pulsetorch.core.design.components.PulseTorchScreen
 import com.denysshulhin.pulsetorch.core.design.theme.PTColor
 import com.denysshulhin.pulsetorch.core.design.theme.PTDimen
 import com.denysshulhin.pulsetorch.core.permissions.AudioPermission
@@ -51,14 +57,12 @@ fun HomeControlScreen(
 ) {
     val ctx = LocalContext.current
     val s = state.settings
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     val requestMic = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
-        // if user granted and we are in MIC mode, try starting immediately
-        if (granted && s.mode == Mode.MIC && !state.isRunning) {
-            onToggleRunning()
-        }
+        if (granted && s.mode == Mode.MIC && !state.isRunning) onToggleRunning()
     }
 
     val onStartStopClick = remember(state.isRunning, s.mode) {
@@ -75,12 +79,16 @@ fun HomeControlScreen(
         }
     }
 
-    PulseTorchScreen(background = PTColor.Background, glowTop = PTColor.AccentBlue, glowBottom = PTColor.CardBlue) {
+    PulseTorchScreen(
+        background = PTColor.Background,
+        glowTop = PTColor.AccentBlue,
+        glowBottom = PTColor.CardBlue
+    ) {
         Column(
             modifier = Modifier
+                .fillMaxSize()
                 .padding(horizontal = PTDimen.ScreenHPadding)
-                .padding(top = 8.dp, bottom = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+                .padding(top = 8.dp, bottom = 18.dp)
         ) {
             PTTopBarCentered(
                 title = "PulseTorch",
@@ -90,6 +98,8 @@ fun HomeControlScreen(
                     }
                 }
             )
+
+            Spacer(Modifier.height(12.dp))
 
             PTModeTabs(
                 selectedIndex = s.mode.toTabIndex(),
@@ -102,44 +112,109 @@ fun HomeControlScreen(
                 }
             )
 
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(12.dp))
 
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                PTSignalRing(level01 = state.signalLevel01)
-            }
+            val scroll = rememberScrollState()
 
-            Spacer(Modifier.height(4.dp))
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(scroll),
+                verticalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
+                if (isLandscape) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                PTSignalRing(level01 = state.signalLevel01)
+                            }
 
-            PTPrimaryButton(
-                text = if (state.isRunning) "Stop" else "Start",
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Outlined.PowerSettingsNew,
-                        contentDescription = null,
-                        tint = PTColor.Background
+                            PTPrimaryButton(
+                                text = if (state.isRunning) "Stop" else "Start",
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Outlined.PowerSettingsNew,
+                                        contentDescription = null,
+                                        tint = PTColor.Background
+                                    )
+                                },
+                                onClick = onStartStopClick
+                            )
+
+                            Text(
+                                text = "STATUS:  ${state.statusText}",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = PTColor.TextSilver.copy(alpha = 0.85f),
+                                modifier = Modifier.align(Alignment.CenterHorizontally)
+                            )
+                        }
+
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            PTChipRow(
+                                items = listOf("Smooth", "Pulse", "Strobe"),
+                                selectedIndex = s.effect.toChipIndex(),
+                                onSelected = { onSelectEffectIndex(it) }
+                            )
+
+                            PTPanelCard(modifier = Modifier.fillMaxWidth()) {
+                                Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                                    PTLabeledSliderPercent("Sensitivity", s.sensitivity, onSensitivityChange)
+                                    PTLabeledSliderPercent("Smoothness", s.smoothness, onSmoothnessChange)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        PTSignalRing(level01 = state.signalLevel01)
+                    }
+
+                    PTPrimaryButton(
+                        text = if (state.isRunning) "Stop" else "Start",
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Outlined.PowerSettingsNew,
+                                contentDescription = null,
+                                tint = PTColor.Background
+                            )
+                        },
+                        onClick = onStartStopClick
                     )
-                },
-                onClick = onStartStopClick
-            )
 
-            Text(
-                text = "STATUS:  ${state.statusText}",
-                style = MaterialTheme.typography.labelLarge,
-                color = PTColor.TextSilver.copy(alpha = 0.85f),
-                modifier = Modifier.align(Alignment.CenterHorizontally)
-            )
+                    Text(
+                        text = "STATUS:  ${state.statusText}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = PTColor.TextSilver.copy(alpha = 0.85f),
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    )
 
-            PTChipRow(
-                items = listOf("Smooth", "Pulse", "Strobe"),
-                selectedIndex = s.effect.toChipIndex(),
-                onSelected = { onSelectEffectIndex(it) }
-            )
+                    PTChipRow(
+                        items = listOf("Smooth", "Pulse", "Strobe"),
+                        selectedIndex = s.effect.toChipIndex(),
+                        onSelected = { onSelectEffectIndex(it) }
+                    )
 
-            PTPanelCard(modifier = Modifier.fillMaxWidth()) {
-                Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                    PTLabeledSliderPercent("Sensitivity", s.sensitivity, onSensitivityChange)
-                    PTLabeledSliderPercent("Smoothness", s.smoothness, onSmoothnessChange)
+                    PTPanelCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                            PTLabeledSliderPercent("Sensitivity", s.sensitivity, onSensitivityChange)
+                            PTLabeledSliderPercent("Smoothness", s.smoothness, onSmoothnessChange)
+                        }
+                    }
                 }
+
+                Spacer(Modifier.height(8.dp))
             }
         }
     }
