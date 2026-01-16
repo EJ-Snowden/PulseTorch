@@ -1,7 +1,9 @@
 package com.denysshulhin.pulsetorch.feature.control
 
 import android.Manifest
+import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -28,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.denysshulhin.pulsetorch.core.design.components.PTChipRow
 import com.denysshulhin.pulsetorch.core.design.components.PTIconButton
 import com.denysshulhin.pulsetorch.core.design.components.PTLabeledSliderPercent
@@ -39,7 +42,6 @@ import com.denysshulhin.pulsetorch.core.design.components.PTTopBarCentered
 import com.denysshulhin.pulsetorch.core.design.components.PulseTorchScreen
 import com.denysshulhin.pulsetorch.core.design.theme.PTColor
 import com.denysshulhin.pulsetorch.core.design.theme.PTDimen
-import com.denysshulhin.pulsetorch.core.permissions.AudioPermission
 import com.denysshulhin.pulsetorch.domain.model.AppUiState
 import com.denysshulhin.pulsetorch.domain.model.Mode
 import com.denysshulhin.pulsetorch.domain.model.toChipIndex
@@ -59,22 +61,51 @@ fun HomeControlScreen(
     val s = state.settings
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-    val requestMic = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted && s.mode == Mode.MIC && !state.isRunning) onToggleRunning()
+    fun isGranted(p: String): Boolean =
+        ContextCompat.checkSelfPermission(ctx, p) == PackageManager.PERMISSION_GRANTED
+
+    fun missingPermissionsForStart(): Array<String> {
+        val need = mutableListOf<String>()
+
+        // torch uses camera API -> ask camera permission
+        if (!isGranted(Manifest.permission.CAMERA)) {
+            need += Manifest.permission.CAMERA
+        }
+
+        // notifications permission on Android 13+
+        if (Build.VERSION.SDK_INT >= 33 && !isGranted(Manifest.permission.POST_NOTIFICATIONS)) {
+            need += Manifest.permission.POST_NOTIFICATIONS
+        }
+
+        // mic permission only for MIC mode
+        if (s.mode == Mode.MIC && !isGranted(Manifest.permission.RECORD_AUDIO)) {
+            need += Manifest.permission.RECORD_AUDIO
+        }
+
+        return need.toTypedArray()
+    }
+
+    val requestAll = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        val allGranted = result.values.all { it }
+        if (allGranted && !state.isRunning) {
+            onToggleRunning()
+        }
     }
 
     val onStartStopClick = remember(state.isRunning, s.mode) {
         {
             if (state.isRunning) {
                 onToggleRunning()
+                return@remember
+            }
+
+            val missing = missingPermissionsForStart()
+            if (missing.isNotEmpty()) {
+                requestAll.launch(missing)
             } else {
-                if (s.mode == Mode.MIC && !AudioPermission.hasRecordAudio(ctx)) {
-                    requestMic.launch(Manifest.permission.RECORD_AUDIO)
-                } else {
-                    onToggleRunning()
-                }
+                onToggleRunning()
             }
         }
     }

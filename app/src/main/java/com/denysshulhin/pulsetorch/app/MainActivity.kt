@@ -5,16 +5,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
 import com.denysshulhin.pulsetorch.app.navigation.AppNavGraph
 import com.denysshulhin.pulsetorch.core.design.theme.PulseTorchTheme
-import com.denysshulhin.pulsetorch.core.utils.StopOnBackgroundEffect
 
 class MainActivity : ComponentActivity() {
 
@@ -26,7 +18,6 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             PulseTorchTheme {
-                StopOnBackgroundEffect(onStop = appVm::forceStop)
                 AppNavGraph(appVm)
             }
         }
