@@ -30,19 +30,21 @@ class SettingsRepository(private val context: Context) {
 
     val settingsFlow: Flow<AppSettings> =
         context.ptDataStore.data.map { p ->
+            val defaults = AppSettings()
+
             AppSettings(
-                mode = p[K.MODE]?.let { runCatching { Mode.valueOf(it) }.getOrNull() } ?: Mode.MIC,
-                effect = p[K.EFFECT]?.let { runCatching { Effect.valueOf(it) }.getOrNull() } ?: Effect.STROBE,
+                mode = p[K.MODE]?.toEnumOrNull<Mode>() ?: defaults.mode,
+                effect = p[K.EFFECT]?.toEnumOrNull<Effect>() ?: defaults.effect,
 
-                sensitivity = p[K.SENSITIVITY] ?: 0.75f,
-                smoothness = p[K.SMOOTHNESS] ?: 0.40f,
+                sensitivity = (p[K.SENSITIVITY] ?: defaults.sensitivity).coerceIn(0f, 1f),
+                smoothness = (p[K.SMOOTHNESS] ?: defaults.smoothness).coerceIn(0f, 1f),
 
-                autoBrightness = p[K.AUTO_BRIGHTNESS] ?: true,
-                maxStrobeHz = p[K.MAX_STROBE_HZ] ?: 10f,
-                micGain = p[K.MIC_GAIN] ?: 1.4f,
-                smoothing = p[K.SMOOTHING] ?: 0.40f,
-                bassFocus = p[K.BASS_FOCUS] ?: true,
-                strobeWarning = p[K.STROBE_WARNING] ?: true,
+                autoBrightness = p[K.AUTO_BRIGHTNESS] ?: defaults.autoBrightness,
+                maxStrobeHz = (p[K.MAX_STROBE_HZ] ?: defaults.maxStrobeHz).coerceIn(1f, 20f),
+                micGain = (p[K.MIC_GAIN] ?: defaults.micGain).coerceIn(0.5f, 2.0f),
+                smoothing = (p[K.SMOOTHING] ?: defaults.smoothing).coerceIn(0f, 1f),
+                bassFocus = p[K.BASS_FOCUS] ?: defaults.bassFocus,
+                strobeWarning = p[K.STROBE_WARNING] ?: defaults.strobeWarning
             )
         }
 
@@ -58,4 +60,8 @@ class SettingsRepository(private val context: Context) {
     suspend fun setSmoothing(v: Float) = context.ptDataStore.edit { it[K.SMOOTHING] = v.coerceIn(0f, 1f) }
     suspend fun setBassFocus(v: Boolean) = context.ptDataStore.edit { it[K.BASS_FOCUS] = v }
     suspend fun setStrobeWarning(v: Boolean) = context.ptDataStore.edit { it[K.STROBE_WARNING] = v }
+}
+
+private inline fun <reified T : Enum<T>> String.toEnumOrNull(): T? {
+    return runCatching { enumValueOf<T>(this) }.getOrNull()
 }

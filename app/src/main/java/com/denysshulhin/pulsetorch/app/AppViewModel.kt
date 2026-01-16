@@ -3,7 +3,10 @@ package com.denysshulhin.pulsetorch.app
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.denysshulhin.pulsetorch.data.engine.PulseTorchRunner
+import com.denysshulhin.pulsetorch.data.pipeline.AudioPipelineManager
+import com.denysshulhin.pulsetorch.data.pipeline.BasicAudioAnalyzer
+import com.denysshulhin.pulsetorch.data.pipeline.BasicEffectEngine
+import com.denysshulhin.pulsetorch.data.pipeline.DemoAudioSource
 import com.denysshulhin.pulsetorch.data.settings.SettingsRepository
 import com.denysshulhin.pulsetorch.data.torch.AndroidTorchController
 import com.denysshulhin.pulsetorch.domain.model.AppUiState
@@ -19,10 +22,14 @@ import kotlinx.coroutines.launch
 class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val repo = SettingsRepository(app.applicationContext)
-    private val torch = AndroidTorchController(app, viewModelScope)
+    private val torch = AndroidTorchController(app.applicationContext, viewModelScope)
 
-    // DSP runner (пока DemoSignalSource, без реального аудио)
-    private val runner = PulseTorchRunner(torch)
+    private val pipeline = AudioPipelineManager(
+        torch = torch,
+        sourceFactory = { _ -> DemoAudioSource() }, // пока demo
+        analyzer = BasicAudioAnalyzer(sampleRateFps = 60, rmsWindowMs = 180),
+        engine = BasicEffectEngine()
+    )
 
     private val isRunning = MutableStateFlow(false)
     private val statusText = MutableStateFlow("IDLE")
@@ -33,7 +40,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }.stateIn(viewModelScope, SharingStarted.Eagerly, AppUiState())
 
     fun setMode(mode: Mode) {
-        // always stop torch + runner when changing mode
+        // гарантия: при смене режима всегда OFF
         forceStop()
         viewModelScope.launch { repo.setMode(mode) }
     }
@@ -53,32 +60,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun forceStop() {
         isRunning.value = false
         statusText.value = "IDLE"
-        runner.stop() // includes torch.shutdown()
+        pipeline.stop()
     }
 
     fun toggleRunning() {
-        val willRun = !isRunning.value
-        isRunning.value = willRun
-
-        if (!willRun) {
+        if (isRunning.value) {
+            // stop
+            isRunning.value = false
             statusText.value = "IDLE"
-            runner.stop()
+            pipeline.stop()
             return
         }
 
+        // start
         if (!torch.isTorchAvailable()) {
             isRunning.value = false
             statusText.value = "NO TORCH"
-            runner.stop()
+            pipeline.stop()
             return
         }
 
+        isRunning.value = true
         statusText.value = "RUNNING"
-        runner.start(viewModelScope, uiState)
+        pipeline.start(viewModelScope, uiState)
     }
 
     override fun onCleared() {
-        runner.stop()
+        pipeline.stop()
         super.onCleared()
     }
 }

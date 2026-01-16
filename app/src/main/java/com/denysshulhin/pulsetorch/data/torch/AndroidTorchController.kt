@@ -4,6 +4,7 @@ import android.content.Context
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.os.Build
+import android.os.SystemClock
 import com.denysshulhin.pulsetorch.domain.contracts.TorchController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -11,6 +12,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.roundToInt
 
 class AndroidTorchController(
@@ -28,6 +30,9 @@ class AndroidTorchController(
 
     private var pwmJob: Job? = null
 
+    // Throttle hardware calls a bit (some devices glitch when spamming)
+    private val lastApplyMs = AtomicLong(0L)
+
     override fun isTorchAvailable(): Boolean = resolveTorchCameraId() != null
 
     override fun supportsStrengthControl(): Boolean {
@@ -37,18 +42,28 @@ class AndroidTorchController(
 
     override fun setEnabled(enabled: Boolean) {
         this.enabled = enabled
-        apply()
+        applyThrottled()
     }
 
     override fun setLevel(level01: Float) {
         this.level01 = level01.coerceIn(0f, 1f)
-        if (enabled) apply()
+        if (enabled) applyThrottled()
     }
 
     override fun shutdown() {
         enabled = false
         stopPwm()
         safeSetTorch(false)
+    }
+
+    private fun applyThrottled() {
+        val now = SystemClock.elapsedRealtime()
+        val prev = lastApplyMs.get()
+        // allow up to ~30 updates/sec
+        if (now - prev < 33) return
+        if (lastApplyMs.compareAndSet(prev, now)) {
+            apply()
+        }
     }
 
     private fun apply() {
@@ -61,7 +76,7 @@ class AndroidTorchController(
         }
 
         val lvl = level01.coerceIn(0f, 1f)
-        if (lvl <= 0f) {
+        if (lvl <= 0.01f) {
             stopPwm()
             safeSetTorch(false)
             return
@@ -75,14 +90,14 @@ class AndroidTorchController(
             return
         }
 
-        // Fallback 1: full on
+        // Full on if near max
         if (lvl >= 0.999f) {
             stopPwm()
             safeSetTorch(true)
             return
         }
 
-        // Fallback 2: duty-cycle (PWM) to imitate brightness
+        // PWM fallback
         startPwm(level = lvl)
     }
 
@@ -90,6 +105,8 @@ class AndroidTorchController(
         if (cameraId != null) return cameraId
 
         val ids = runCatching { cameraManager.cameraIdList }.getOrNull() ?: return null
+
+        // best: back camera with flash
         val best = ids.firstOrNull { id ->
             val c = runCatching { cameraManager.getCameraCharacteristics(id) }.getOrNull() ?: return@firstOrNull false
             val hasFlash = c.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
@@ -101,9 +118,7 @@ class AndroidTorchController(
         }
 
         cameraId = best
-        if (best != null) {
-            maxStrengthLevel = readMaxStrength(best)
-        }
+        if (best != null) maxStrengthLevel = readMaxStrength(best)
         return cameraId
     }
 
@@ -124,19 +139,16 @@ class AndroidTorchController(
             safeSetTorch(true)
             return
         }
-        runCatching {
-            cameraManager.turnOnTorchWithStrengthLevel(id, strength)
-        }.onFailure {
-            // fallback if device/API rejects strength call
-            safeSetTorch(true)
-        }
+        runCatching { cameraManager.turnOnTorchWithStrengthLevel(id, strength) }
+            .onFailure { safeSetTorch(true) }
     }
 
     private fun startPwm(level: Float) {
         stopPwm()
-
         val id = resolveTorchCameraId() ?: return
-        val periodMs = 20L // 50Hz. If hardware is slow you can raise to 30-40ms.
+
+        // 50Hz base period, but clamp on/off times to avoid 0ms
+        val periodMs = 20L
         val onMs = (periodMs * level).toLong().coerceIn(1L, periodMs - 1L)
         val offMs = (periodMs - onMs).coerceAtLeast(1L)
 
@@ -147,7 +159,6 @@ class AndroidTorchController(
                 runCatching { cameraManager.setTorchMode(id, false) }
                 delay(offMs)
             }
-            // safety off
             runCatching { cameraManager.setTorchMode(id, false) }
         }
     }
