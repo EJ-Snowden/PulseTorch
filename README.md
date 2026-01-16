@@ -73,5 +73,5 @@ PulseTorch processes audio **only on your device**.
 
 ## License
 Copyright (c) 2026 Denys Shulhin. All rights reserved.  
-This repository is public for viewing, but the code is not licensed for reuse. See `LICENSE`.
+This repository is public for viewing, but the code is not licensed for reuse. See `LICENSE`.  
 Unauthorized use, copying, modification, or distribution is prohibited.
