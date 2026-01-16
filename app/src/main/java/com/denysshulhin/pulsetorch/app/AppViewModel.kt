@@ -3,6 +3,7 @@ package com.denysshulhin.pulsetorch.app
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.denysshulhin.pulsetorch.data.engine.PulseTorchRunner
 import com.denysshulhin.pulsetorch.data.settings.SettingsRepository
 import com.denysshulhin.pulsetorch.data.torch.AndroidTorchController
 import com.denysshulhin.pulsetorch.domain.model.AppUiState
@@ -20,6 +21,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = SettingsRepository(app.applicationContext)
     private val torch = AndroidTorchController(app, viewModelScope)
 
+    // DSP runner (пока DemoSignalSource, без реального аудио)
+    private val runner = PulseTorchRunner(torch)
+
     private val isRunning = MutableStateFlow(false)
     private val statusText = MutableStateFlow("IDLE")
 
@@ -29,13 +33,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }.stateIn(viewModelScope, SharingStarted.Eagerly, AppUiState())
 
     fun setMode(mode: Mode) {
-        // 1) always stop torch when changing mode
+        // always stop torch + runner when changing mode
         forceStop()
-
-        // 2) persist mode so UI updates selected tab everywhere
-        viewModelScope.launch {
-            repo.setMode(mode)
-        }
+        viewModelScope.launch { repo.setMode(mode) }
     }
 
     fun setEffect(effect: Effect) = viewModelScope.launch { repo.setEffect(effect) }
@@ -53,7 +53,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun forceStop() {
         isRunning.value = false
         statusText.value = "IDLE"
-        torch.shutdown()
+        runner.stop() // includes torch.shutdown()
     }
 
     fun toggleRunning() {
@@ -62,27 +62,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
         if (!willRun) {
             statusText.value = "IDLE"
-            torch.shutdown()
+            runner.stop()
             return
         }
 
         if (!torch.isTorchAvailable()) {
             isRunning.value = false
             statusText.value = "NO TORCH"
-            torch.shutdown()
+            runner.stop()
             return
         }
 
-        val s = uiState.value.settings
-        val level = if (s.autoBrightness) 1f else 0.7f
-
-        torch.setLevel(level)
-        torch.setEnabled(true)
         statusText.value = "RUNNING"
+        runner.start(viewModelScope, uiState)
     }
 
     override fun onCleared() {
-        torch.shutdown()
+        runner.stop()
         super.onCleared()
     }
 }
