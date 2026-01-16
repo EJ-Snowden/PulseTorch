@@ -1,12 +1,15 @@
 package com.denysshulhin.pulsetorch.data.pipeline
 
-import kotlinx.coroutines.flow.StateFlow
+import com.denysshulhin.pulsetorch.domain.model.AppSettings
 import com.denysshulhin.pulsetorch.domain.model.AppUiState
+import kotlinx.coroutines.flow.StateFlow
 
 interface AudioSource {
     suspend fun start()
     suspend fun stop()
-    fun amplitudeFlow(): kotlinx.coroutines.flow.Flow<Float>
+
+    // 1 tick = one fresh amplitude sample in 0..1, or null if not ready
+    fun readAmplitude01(): Float?
 }
 
 data class AnalyzerOutput(
@@ -17,25 +20,18 @@ data class AnalyzerOutput(
 )
 
 interface Analyzer {
-    fun process(amplitude: Float, settings: com.denysshulhin.pulsetorch.domain.model.AppSettings): AnalyzerOutput
+    fun process(amplitude01: Float, settings: AppSettings): AnalyzerOutput
     fun reset()
 }
 
 data class EffectOutput(
-    val level: Float,        // 0..1 torch intensity target
-    val hz: Float? = null     // for debug (strobe/pulse)
+    val level: Float, // 0..1 torch target
+    val hz: Float? = null
 )
 
 interface EffectEngine {
-    fun process(input: AnalyzerOutput, settings: com.denysshulhin.pulsetorch.domain.model.AppSettings): EffectOutput
+    fun process(input: AnalyzerOutput, settings: AppSettings): EffectOutput
     fun reset()
-}
-
-interface TorchController {
-    fun isTorchAvailable(): Boolean
-    fun shutdown()
-    fun setEnabled(enabled: Boolean)
-    fun setLevel(level: Float) // 0..1
 }
 
 interface Pipeline {

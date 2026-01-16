@@ -6,15 +6,17 @@ import com.denysshulhin.pulsetorch.domain.model.Mode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 class AudioPipelineManager(
     private val torch: TorchController,
     private val sourceFactory: (Mode) -> AudioSource,
     private val analyzer: Analyzer,
-    private val engine: EffectEngine
+    private val engine: EffectEngine,
+    private val onSignal: (Float) -> Unit
 ) : Pipeline {
 
     private var pipelineScope: CoroutineScope? = null
@@ -24,30 +26,25 @@ class AudioPipelineManager(
     private var currentMode: Mode? = null
     private var currentSource: AudioSource? = null
 
-    // restart guard (avoid multiple restarts)
     private var restarting = false
+
+    // stable tick (20-50ms)
+    private val tickMs = 30L
 
     override fun start(scope: CoroutineScope, ui: StateFlow<AppUiState>) {
         if (job != null) return
-
         pipelineScope = scope
         uiRef = ui
-
         startInternal(scope, ui, ui.value.settings.mode)
     }
 
     override fun stop() {
         val scope = pipelineScope
-        val ui = uiRef
-
-        if (scope == null || ui == null) {
+        if (scope == null) {
             hardShutdown()
             return
         }
-
-        scope.launch {
-            stopInternal()
-        }
+        scope.launch { stopInternal() }
     }
 
     private fun startInternal(scope: CoroutineScope, ui: StateFlow<AppUiState>, mode: Mode) {
@@ -59,29 +56,39 @@ class AudioPipelineManager(
         currentSource = src
 
         job = scope.launch {
+            // start source
             src.start()
 
-            if (src is DemoAudioSource) {
-                launch { src.emitLoop { this@launch.isActive } }
-            }
-
-            src.amplitudeFlow().collect { amp ->
+            // main loop
+            while (isActive) {
                 val settings = ui.value.settings
 
                 // mode changed while running -> restart cleanly
                 if (settings.mode != currentMode && !restarting) {
                     restarting = true
                     restart(settings.mode)
-                    return@collect
+                    break
                 }
 
                 if (!torch.isTorchAvailable()) {
                     hardShutdown()
-                    return@collect
+                    break
                 }
+
+                // Demo source can advance itself
+                if (src is DemoAudioSource) {
+                    src.tick()
+                } else {
+                    delay(tickMs)
+                }
+
+                val amp = src.readAmplitude01() ?: continue
 
                 val a = analyzer.process(amp, settings)
                 val e = engine.process(a, settings)
+
+                // push live signal to UI (use normalized)
+                onSignal(a.normalized)
 
                 val level = e.level.coerceIn(0f, 1f)
                 torch.setLevel(level)
@@ -105,28 +112,24 @@ class AudioPipelineManager(
         val j = job
         job = null
 
-        if (j != null) {
-            j.cancelAndJoin()
-        }
+        if (j != null) j.cancelAndJoin()
 
         val src = currentSource
         currentSource = null
         currentMode = null
 
-        if (src != null) {
-            runCatching { src.stop() }
-        }
+        if (src != null) runCatching { src.stop() }
 
-        // ALWAYS off
+        onSignal(0f)
         torch.shutdown()
     }
 
     private fun hardShutdown() {
-        // best effort, non-suspending emergency shutdown
         job?.cancel()
         job = null
         currentSource = null
         currentMode = null
+        onSignal(0f)
         torch.shutdown()
     }
 }

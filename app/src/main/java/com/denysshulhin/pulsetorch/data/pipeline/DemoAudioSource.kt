@@ -1,38 +1,36 @@
 package com.denysshulhin.pulsetorch.data.pipeline
 
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.isActive
-import kotlin.math.PI
 import kotlin.math.sin
 
-class DemoAudioSource : AudioSource {
+class DemoAudioSource(
+    private val fps: Int = 60
+) : AudioSource {
 
-    private val out = MutableSharedFlow<Float>(replay = 0, extraBufferCapacity = 64)
+    private var t = 0f
+    private var running = false
+    private var last: Float? = null
 
     override suspend fun start() {
-        // nothing, generator runs in pipeline loop
+        running = true
+        t = 0f
+        last = 0f
     }
 
     override suspend fun stop() {
-        // nothing
+        running = false
+        last = null
     }
 
-    override fun amplitudeFlow(): Flow<Float> = out
+    override fun readAmplitude01(): Float? = last
 
-    suspend fun emitLoop(isActive: () -> Boolean) {
-        var t = 0f
-        while (isActive()) {
-            // 0..1 pseudo amplitude (music-like)
-            val a = (sin(2f * PI.toFloat() * 1.2f * t) * 0.5f + 0.5f)
-            val b = (sin(2f * PI.toFloat() * 0.33f * t) * 0.5f + 0.5f)
-            val amp = (0.15f + 0.85f * (0.7f * a + 0.3f * b)).coerceIn(0f, 1f)
-
-            out.tryEmit(amp)
-
-            t += 0.016f
-            delay(16)
-        }
+    // optional helper for pipeline (we’ll run it from pipeline loop)
+    suspend fun tick() {
+        if (!running) return
+        val w = (sin(t) * 0.5f + 0.5f) // 0..1
+        val wobble = (sin(t * 0.33f) * 0.15f + 0.85f).coerceIn(0f, 1f)
+        last = (w * wobble).coerceIn(0f, 1f)
+        t += 0.18f
+        delay((1000 / fps).toLong())
     }
 }

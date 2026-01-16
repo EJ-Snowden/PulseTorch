@@ -121,7 +121,7 @@ fun SystemCaptureScreen(
                         if (state.isRunning) "Status: Capturing" else "Status: Idle"
                     )
                     Box(modifier = Modifier.fillMaxWidth()) {
-                        PTStereoMeter()
+                        PTStereoMeter(level01 = state.signalLevel01)
                     }
                 }
             }

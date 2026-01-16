@@ -1,5 +1,8 @@
 package com.denysshulhin.pulsetorch.feature.control
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,8 +17,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.denysshulhin.pulsetorch.core.design.components.PTChipRow
 import com.denysshulhin.pulsetorch.core.design.components.PTLabeledSliderPercent
@@ -28,8 +33,8 @@ import com.denysshulhin.pulsetorch.core.design.components.PTPanelCard
 import com.denysshulhin.pulsetorch.core.design.components.PTSignalRing
 import com.denysshulhin.pulsetorch.core.design.theme.PTColor
 import com.denysshulhin.pulsetorch.core.design.theme.PTDimen
+import com.denysshulhin.pulsetorch.core.permissions.AudioPermission
 import com.denysshulhin.pulsetorch.domain.model.AppUiState
-import com.denysshulhin.pulsetorch.domain.model.Effect
 import com.denysshulhin.pulsetorch.domain.model.Mode
 import com.denysshulhin.pulsetorch.domain.model.toChipIndex
 import com.denysshulhin.pulsetorch.domain.model.toTabIndex
@@ -44,7 +49,31 @@ fun HomeControlScreen(
     onSmoothnessChange: (Float) -> Unit,
     onToggleRunning: () -> Unit
 ) {
+    val ctx = LocalContext.current
     val s = state.settings
+
+    val requestMic = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        // if user granted and we are in MIC mode, try starting immediately
+        if (granted && s.mode == Mode.MIC && !state.isRunning) {
+            onToggleRunning()
+        }
+    }
+
+    val onStartStopClick = remember(state.isRunning, s.mode) {
+        {
+            if (state.isRunning) {
+                onToggleRunning()
+            } else {
+                if (s.mode == Mode.MIC && !AudioPermission.hasRecordAudio(ctx)) {
+                    requestMic.launch(Manifest.permission.RECORD_AUDIO)
+                } else {
+                    onToggleRunning()
+                }
+            }
+        }
+    }
 
     PulseTorchScreen(background = PTColor.Background, glowTop = PTColor.AccentBlue, glowBottom = PTColor.CardBlue) {
         Column(
@@ -76,7 +105,7 @@ fun HomeControlScreen(
             Spacer(Modifier.height(6.dp))
 
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                PTSignalRing()
+                PTSignalRing(level01 = state.signalLevel01)
             }
 
             Spacer(Modifier.height(4.dp))
@@ -90,7 +119,7 @@ fun HomeControlScreen(
                         tint = PTColor.Background
                     )
                 },
-                onClick = onToggleRunning
+                onClick = onStartStopClick
             )
 
             Text(
