@@ -1,9 +1,11 @@
 package com.denysshulhin.pulsetorch.data.pipeline.mic
 
+import android.Manifest
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Build
+import androidx.annotation.RequiresPermission
 import com.denysshulhin.pulsetorch.data.pipeline.AudioSource
 import kotlin.math.sqrt
 
@@ -15,6 +17,7 @@ class MicAudioSource(
     private var record: AudioRecord? = null
     private var buffer: ShortArray = ShortArray(0)
 
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     override suspend fun start() {
         if (record != null) return
 

@@ -1,5 +1,10 @@
 package com.denysshulhin.pulsetorch.feature.file
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,22 +24,25 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBackIosNew
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
-import androidx.compose.material.icons.outlined.SkipNext
-import androidx.compose.material.icons.outlined.SkipPrevious
+import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.denysshulhin.pulsetorch.core.design.components.PTIconButton
 import com.denysshulhin.pulsetorch.core.design.components.PTModeTabs
@@ -42,6 +50,7 @@ import com.denysshulhin.pulsetorch.core.design.components.PTSurfaceCard
 import com.denysshulhin.pulsetorch.core.design.components.PulseTorchScreen
 import com.denysshulhin.pulsetorch.core.design.theme.PTColor
 import com.denysshulhin.pulsetorch.core.design.theme.PTDimen
+import com.denysshulhin.pulsetorch.core.runtime.PulseTorchRuntime
 import com.denysshulhin.pulsetorch.domain.model.AppUiState
 import com.denysshulhin.pulsetorch.domain.model.Mode
 import com.denysshulhin.pulsetorch.domain.model.toTabIndex
@@ -51,11 +60,68 @@ fun FilePlayerScreen(
     state: AppUiState,
     onBack: () -> Unit,
     onUseInHome: () -> Unit,
-    onSelectMode: (Mode) -> Unit
+    onSelectMode: (Mode) -> Unit,
+    onPickFile: (Uri, String?) -> Unit,
+    onTogglePlay: () -> Unit,
+    onStopAll: () -> Unit,
+    onSeek: (Long) -> Unit
 ) {
+    val ctx = LocalContext.current
     val s = state.settings
-    var progress by remember { mutableFloatStateOf(0.35f) }
+
+    val isPlaying by PulseTorchRuntime.fileIsPlaying.collectAsState()
+    val posMs by PulseTorchRuntime.filePosMs.collectAsState()
+    val durMs by PulseTorchRuntime.fileDurMs.collectAsState()
+
     val scroll = rememberScrollState()
+
+    fun guessDisplayName(uri: Uri): String? {
+        return runCatching {
+            ctx.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { c ->
+                    val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0 && c.moveToFirst()) c.getString(idx) else null
+                }
+        }.getOrNull()
+    }
+
+    val pickFile = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                ctx.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+
+            val name = runCatching {
+                ctx.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                    ?.use { c ->
+                        val i = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (i >= 0 && c.moveToFirst()) c.getString(i) else null
+                    }
+            }.getOrNull()
+
+            onPickFile(uri, name ?: "Selected audio")
+        }
+    }
+
+    fun formatMs(ms: Long): String {
+        val totalSec = (ms / 1000).coerceAtLeast(0)
+        val m = totalSec / 60
+        val sec = totalSec % 60
+        return "%02d:%02d".format(m, sec)
+    }
+
+    val hasDuration = durMs > 0
+    val progress01 = if (hasDuration) (posMs.toFloat() / durMs.toFloat()).coerceIn(0f, 1f) else 0f
+
+    var userDragging by remember { mutableStateOf(false) }
+    var dragValue by remember { mutableFloatStateOf(0f) }
+
+    val sliderShown = if (userDragging) dragValue else progress01
 
     PulseTorchScreen(
         background = PTColor.BackgroundFile,
@@ -119,7 +185,7 @@ fun FilePlayerScreen(
                             .fillMaxWidth()
                             .padding(14.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Box(
                             modifier = Modifier
@@ -135,61 +201,57 @@ fun FilePlayerScreen(
                                 modifier = Modifier.size(44.dp)
                             )
                         }
+
                         Text(
-                            text = "Midnight City.mp3",
+                            text = s.fileName ?: "No file selected",
                             style = MaterialTheme.typography.titleMedium,
                             color = PTColor.White
                         )
-                        Text(
-                            text = "04:03  •  320kbps",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = PTColor.TextSecondary.copy(alpha = 0.65f)
-                        )
-                    }
-                }
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(90.dp),
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val activeHeights = listOf(10, 14, 22, 12, 28, 40, 22, 34, 16, 46, 24, 12, 34)
-                    val passiveHeights = listOf(40, 22, 34, 16, 28, 12, 18, 10, 14, 22, 12, 16, 10)
-
-                    activeHeights.forEach { h ->
-                        Box(
+                        Row(
                             modifier = Modifier
-                                .weight(1f, fill = false)
-                                .size(width = 4.dp, height = h.dp)
-                                .clip(RoundedCornerShape(99.dp))
-                                .background(PTColor.AccentBlue.copy(alpha = 0.95f))
-                        )
-                    }
-                    passiveHeights.forEach { h ->
-                        Box(
-                            modifier = Modifier
-                                .weight(1f, fill = false)
-                                .size(width = 4.dp, height = h.dp)
-                                .clip(RoundedCornerShape(99.dp))
-                                .background(PTColor.TextSilver.copy(alpha = 0.25f))
-                        )
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(PTColor.White.copy(alpha = 0.06f))
+                                .clickable { pickFile.launch(arrayOf("audio/*")) }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (s.fileUri.isNullOrBlank()) "SELECT FILE" else "CHANGE FILE",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = PTColor.White
+                            )
+                        }
                     }
                 }
 
                 Column {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("01:23", style = MaterialTheme.typography.labelLarge, color = PTColor.AccentBlue)
                         Text(
-                            "04:03",
+                            formatMs(posMs),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = PTColor.AccentBlue
+                        )
+                        Text(
+                            formatMs(durMs),
                             style = MaterialTheme.typography.labelLarge,
                             color = PTColor.TextSecondary.copy(alpha = 0.6f)
                         )
                     }
+
                     Slider(
-                        value = progress,
-                        onValueChange = { progress = it },
+                        value = sliderShown,
+                        onValueChange = { v ->
+                            if (!hasDuration) return@Slider
+                            userDragging = true
+                            dragValue = v
+                        },
+                        onValueChangeFinished = {
+                            if (!hasDuration) return@Slider
+                            val target = (durMs.toFloat() * dragValue).toLong()
+                            userDragging = false
+                            onSeek(target)
+                        },
                         colors = SliderDefaults.colors(
                             thumbColor = PTColor.PrimarySoft,
                             activeTrackColor = PTColor.AccentBlue,
@@ -200,27 +262,43 @@ fun FilePlayerScreen(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    PTIconButton(onClick = {}) { Icon(Icons.Outlined.SkipPrevious, null, tint = PTColor.TextSilver) }
-
                     Box(
                         modifier = Modifier
                             .size(80.dp)
                             .clip(RoundedCornerShape(999.dp))
-                            .background(PTColor.PrimarySoft),
+                            .background(PTColor.PrimarySoft)
+                            .clickable {
+                                // Стартуем/пауза уже из UI (без ограничений пикера)
+                                onTogglePlay()
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Outlined.PlayArrow,
+                            imageVector = if (isPlaying) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
                             contentDescription = null,
                             tint = PTColor.BackgroundFile,
                             modifier = Modifier.size(42.dp)
                         )
                     }
 
-                    PTIconButton(onClick = {}) { Icon(Icons.Outlined.SkipNext, null, tint = PTColor.TextSilver) }
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(PTColor.White.copy(alpha = 0.08f))
+                            .clickable { onStopAll() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Stop,
+                            contentDescription = null,
+                            tint = PTColor.TextSilver,
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
                 }
 
                 Spacer(Modifier.height(6.dp))

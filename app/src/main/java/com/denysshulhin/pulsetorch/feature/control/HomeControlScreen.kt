@@ -31,7 +31,6 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.denysshulhin.pulsetorch.core.design.components.PTChipRow
 import com.denysshulhin.pulsetorch.core.design.components.PTIconButton
 import com.denysshulhin.pulsetorch.core.design.components.PTLabeledSliderPercent
 import com.denysshulhin.pulsetorch.core.design.components.PTModeTabs
@@ -44,7 +43,6 @@ import com.denysshulhin.pulsetorch.core.design.theme.PTColor
 import com.denysshulhin.pulsetorch.core.design.theme.PTDimen
 import com.denysshulhin.pulsetorch.domain.model.AppUiState
 import com.denysshulhin.pulsetorch.domain.model.Mode
-import com.denysshulhin.pulsetorch.domain.model.toChipIndex
 import com.denysshulhin.pulsetorch.domain.model.toTabIndex
 
 @Composable
@@ -52,7 +50,6 @@ fun HomeControlScreen(
     state: AppUiState,
     onOpenSettings: () -> Unit,
     onSelectMode: (Mode) -> Unit,
-    onSelectEffectIndex: (Int) -> Unit,
     onSensitivityChange: (Float) -> Unit,
     onSmoothnessChange: (Float) -> Unit,
     onToggleRunning: () -> Unit
@@ -67,17 +64,12 @@ fun HomeControlScreen(
     fun missingPermissionsForStart(): Array<String> {
         val need = mutableListOf<String>()
 
-        // torch uses camera API -> ask camera permission
-        if (!isGranted(Manifest.permission.CAMERA)) {
-            need += Manifest.permission.CAMERA
-        }
+        if (!isGranted(Manifest.permission.CAMERA)) need += Manifest.permission.CAMERA
 
-        // notifications permission on Android 13+
         if (Build.VERSION.SDK_INT >= 33 && !isGranted(Manifest.permission.POST_NOTIFICATIONS)) {
             need += Manifest.permission.POST_NOTIFICATIONS
         }
 
-        // mic permission only for MIC mode
         if (s.mode == Mode.MIC && !isGranted(Manifest.permission.RECORD_AUDIO)) {
             need += Manifest.permission.RECORD_AUDIO
         }
@@ -89,9 +81,7 @@ fun HomeControlScreen(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
         val allGranted = result.values.all { it }
-        if (allGranted && !state.isRunning) {
-            onToggleRunning()
-        }
+        if (allGranted && !state.isRunning) onToggleRunning()
     }
 
     val onStartStopClick = remember(state.isRunning, s.mode) {
@@ -102,11 +92,7 @@ fun HomeControlScreen(
             }
 
             val missing = missingPermissionsForStart()
-            if (missing.isNotEmpty()) {
-                requestAll.launch(missing)
-            } else {
-                onToggleRunning()
-            }
+            if (missing.isNotEmpty()) requestAll.launch(missing) else onToggleRunning()
         }
     }
 
@@ -193,12 +179,6 @@ fun HomeControlScreen(
                             modifier = Modifier.weight(1f),
                             verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            PTChipRow(
-                                items = listOf("Smooth", "Pulse", "Strobe"),
-                                selectedIndex = s.effect.toChipIndex(),
-                                onSelected = { onSelectEffectIndex(it) }
-                            )
-
                             PTPanelCard(modifier = Modifier.fillMaxWidth()) {
                                 Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
                                     PTLabeledSliderPercent("Sensitivity", s.sensitivity, onSensitivityChange)
@@ -229,12 +209,6 @@ fun HomeControlScreen(
                         style = MaterialTheme.typography.labelLarge,
                         color = PTColor.TextSilver.copy(alpha = 0.85f),
                         modifier = Modifier.align(Alignment.CenterHorizontally)
-                    )
-
-                    PTChipRow(
-                        items = listOf("Smooth", "Pulse", "Strobe"),
-                        selectedIndex = s.effect.toChipIndex(),
-                        onSelected = { onSelectEffectIndex(it) }
                     )
 
                     PTPanelCard(modifier = Modifier.fillMaxWidth()) {

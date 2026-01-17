@@ -1,6 +1,7 @@
 package com.denysshulhin.pulsetorch.app
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.denysshulhin.pulsetorch.core.permissions.AudioPermission
@@ -37,7 +38,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }.stateIn(viewModelScope, SharingStarted.Eagerly, AppUiState())
 
     fun setMode(mode: Mode) {
-        // You can allow changing mode while running, pipeline manager will restart
         viewModelScope.launch { repo.setMode(mode) }
     }
 
@@ -53,6 +53,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setBassFocus(v: Boolean) = viewModelScope.launch { repo.setBassFocus(v) }
     fun setStrobeWarning(v: Boolean) = viewModelScope.launch { repo.setStrobeWarning(v) }
 
+    fun setFile(uri: Uri?, name: String?) {
+        // Важно: при смене файла останавливаем сервис/плеер
+        PulseTorchServiceController.stop(ctx)
+
+        viewModelScope.launch {
+            repo.setFile(uri?.toString(), name)
+            repo.setMode(Mode.FILE)
+        }
+    }
+
     fun forceStop() {
         PulseTorchServiceController.stop(ctx)
     }
@@ -64,13 +74,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
 
-        // mic permission check only for MIC mode
         val mode = uiState.value.settings.mode
+
         if (mode == Mode.MIC && !AudioPermission.hasRecordAudio(ctx)) {
             PulseTorchRuntime.setStatus("MIC PERMISSION REQUIRED")
             return
         }
 
+        if (mode == Mode.FILE && uiState.value.settings.fileUri.isNullOrBlank()) {
+            PulseTorchRuntime.setStatus("SELECT A FILE")
+            return
+        }
+
         PulseTorchServiceController.start(ctx)
+    }
+
+    fun fileToggle() {
+        // Play/Pause для File режима
+        PulseTorchServiceController.fileTogglePlay(ctx)
+    }
+
+    fun fileSeek(posMs: Long) {
+        PulseTorchServiceController.fileSeek(ctx, posMs)
+    }
+
+    fun filePlay(uri: Uri, name: String?) {
+        viewModelScope.launch {
+            repo.setFile(uri.toString(), name)
+            repo.setMode(Mode.FILE)
+        }
+        PulseTorchServiceController.start(ctx)
+        PulseTorchServiceController.fileTogglePlay(ctx)
     }
 }

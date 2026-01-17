@@ -23,13 +23,12 @@ class AudioPipelineManager(
     private var uiRef: StateFlow<AppUiState>? = null
 
     private var job: Job? = null
-    private var currentMode: Mode? = null
+    private var currentSourceKey: String? = null
     private var currentSource: AudioSource? = null
-
     private var restarting = false
 
-    // stable tick (20-50ms)
-    private val tickMs = 30L
+    // 50Hz loop for less latency (works well with Visualizer + mic chunk ~30ms)
+    private val tickMs = 20L
 
     override fun start(scope: CoroutineScope, ui: StateFlow<AppUiState>) {
         if (job != null) return
@@ -47,8 +46,17 @@ class AudioPipelineManager(
         scope.launch { stopInternal() }
     }
 
+    private fun sourceKeyFor(ui: AppUiState): String {
+        val s = ui.settings
+        return when (s.mode) {
+            Mode.FILE -> "FILE:${s.fileUri ?: ""}"
+            Mode.SYSTEM -> "SYSTEM"
+            Mode.MIC -> "MIC"
+        }
+    }
+
     private fun startInternal(scope: CoroutineScope, ui: StateFlow<AppUiState>, mode: Mode) {
-        currentMode = mode
+        currentSourceKey = sourceKeyFor(ui.value)
         analyzer.reset()
         engine.reset()
 
@@ -56,15 +64,14 @@ class AudioPipelineManager(
         currentSource = src
 
         job = scope.launch {
-            // start source
             src.start()
 
-            // main loop
             while (isActive) {
-                val settings = ui.value.settings
+                val state = ui.value
+                val settings = state.settings
 
-                // mode changed while running -> restart cleanly
-                if (settings.mode != currentMode && !restarting) {
+                val newKey = sourceKeyFor(state)
+                if (newKey != currentSourceKey && !restarting) {
                     restarting = true
                     restart(settings.mode)
                     break
@@ -75,9 +82,11 @@ class AudioPipelineManager(
                     break
                 }
 
-                // Demo source can advance itself
+                // Demo source drives itself
                 if (src is DemoAudioSource) {
                     src.tick()
+                } else if (src is com.denysshulhin.pulsetorch.data.pipeline.mic.MicAudioSource) {
+                    // Mic read blocks, no extra delay
                 } else {
                     delay(tickMs)
                 }
@@ -87,7 +96,6 @@ class AudioPipelineManager(
                 val a = analyzer.process(amp, settings)
                 val e = engine.process(a, settings)
 
-                // push live signal to UI (use normalized)
                 onSignal(a.normalized)
 
                 val level = e.level.coerceIn(0f, 1f)
@@ -111,12 +119,11 @@ class AudioPipelineManager(
     private suspend fun stopInternal() {
         val j = job
         job = null
-
         if (j != null) j.cancelAndJoin()
 
         val src = currentSource
         currentSource = null
-        currentMode = null
+        currentSourceKey = null
 
         if (src != null) runCatching { src.stop() }
 
@@ -128,7 +135,7 @@ class AudioPipelineManager(
         job?.cancel()
         job = null
         currentSource = null
-        currentMode = null
+        currentSourceKey = null
         onSignal(0f)
         torch.shutdown()
     }

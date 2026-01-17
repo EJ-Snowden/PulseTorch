@@ -14,5 +14,9 @@ data class AppSettings(
     val micGain: Float = 1.4f,       // 0.5..2.0
     val smoothing: Float = 0.40f,    // 0..1
     val bassFocus: Boolean = true,
-    val strobeWarning: Boolean = true
+    val strobeWarning: Boolean = true,
+
+    // File mode
+    val fileUri: String? = null,
+    val fileName: String? = null
 )

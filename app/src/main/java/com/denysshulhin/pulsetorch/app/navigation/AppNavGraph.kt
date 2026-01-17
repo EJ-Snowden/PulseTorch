@@ -8,7 +8,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.denysshulhin.pulsetorch.app.AppViewModel
-import com.denysshulhin.pulsetorch.domain.model.Effect
 import com.denysshulhin.pulsetorch.domain.model.Mode
 import com.denysshulhin.pulsetorch.feature.capture.SystemCaptureScreen
 import com.denysshulhin.pulsetorch.feature.control.HomeControlScreen
@@ -40,15 +39,6 @@ fun AppNavGraph(appVm: AppViewModel) {
                 state = state,
                 onOpenSettings = { nav.navigateSingleTop(Screen.Settings.route) },
                 onSelectMode = { goMode(it) },
-                onSelectEffectIndex = { idx ->
-                    appVm.setEffect(
-                        when (idx) {
-                            0 -> Effect.SMOOTH
-                            1 -> Effect.PULSE
-                            else -> Effect.STROBE
-                        }
-                    )
-                },
                 onSensitivityChange = appVm::setSensitivity,
                 onSmoothnessChange = appVm::setSmoothness,
                 onToggleRunning = appVm::toggleRunning
@@ -58,16 +48,22 @@ fun AppNavGraph(appVm: AppViewModel) {
         composable(Screen.File.route) {
             FilePlayerScreen(
                 state = state,
-                onBack = { goMode(Mode.MIC) },
-                onUseInHome = { goMode(Mode.MIC) },
-                onSelectMode = { goMode(it) }
+                onBack = { nav.switchMode(Screen.Home.route) },
+                onUseInHome = { nav.switchMode(Screen.Home.route) },
+                onSelectMode = { goMode(it) },
+                onPickFile = { uri, name ->
+                    appVm.filePlay(uri, name)
+                },
+                onTogglePlay = { appVm.fileToggle() },
+                onStopAll = { appVm.forceStop() },
+                onSeek = { ms -> appVm.fileSeek(ms) }
             )
         }
 
         composable(Screen.Capture.route) {
             SystemCaptureScreen(
                 state = state,
-                onBack = { goMode(Mode.MIC) },
+                onBack = { nav.switchMode(Screen.Home.route) },
                 onSelectMode = { goMode(it) },
                 onToggleRunning = appVm::toggleRunning
             )

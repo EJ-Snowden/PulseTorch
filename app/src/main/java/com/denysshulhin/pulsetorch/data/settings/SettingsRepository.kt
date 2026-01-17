@@ -26,6 +26,9 @@ class SettingsRepository(private val context: Context) {
         val SMOOTHING = floatPreferencesKey("smoothing")
         val BASS_FOCUS = booleanPreferencesKey("bass_focus")
         val STROBE_WARNING = booleanPreferencesKey("strobe_warning")
+
+        val FILE_URI = stringPreferencesKey("file_uri")
+        val FILE_NAME = stringPreferencesKey("file_name")
     }
 
     val settingsFlow: Flow<AppSettings> =
@@ -44,7 +47,10 @@ class SettingsRepository(private val context: Context) {
                 micGain = (p[K.MIC_GAIN] ?: defaults.micGain).coerceIn(0.5f, 2.0f),
                 smoothing = (p[K.SMOOTHING] ?: defaults.smoothing).coerceIn(0f, 1f),
                 bassFocus = p[K.BASS_FOCUS] ?: defaults.bassFocus,
-                strobeWarning = p[K.STROBE_WARNING] ?: defaults.strobeWarning
+                strobeWarning = p[K.STROBE_WARNING] ?: defaults.strobeWarning,
+
+                fileUri = p[K.FILE_URI],
+                fileName = p[K.FILE_NAME]
             )
         }
 
@@ -60,6 +66,11 @@ class SettingsRepository(private val context: Context) {
     suspend fun setSmoothing(v: Float) = context.ptDataStore.edit { it[K.SMOOTHING] = v.coerceIn(0f, 1f) }
     suspend fun setBassFocus(v: Boolean) = context.ptDataStore.edit { it[K.BASS_FOCUS] = v }
     suspend fun setStrobeWarning(v: Boolean) = context.ptDataStore.edit { it[K.STROBE_WARNING] = v }
+
+    suspend fun setFile(uri: String?, name: String?) = context.ptDataStore.edit {
+        if (uri.isNullOrBlank()) it.remove(K.FILE_URI) else it[K.FILE_URI] = uri
+        if (name.isNullOrBlank()) it.remove(K.FILE_NAME) else it[K.FILE_NAME] = name
+    }
 }
 
 private inline fun <reified T : Enum<T>> String.toEnumOrNull(): T? {
