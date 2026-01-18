@@ -10,6 +10,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.math.max
 
 class AudioPipelineManager(
     private val torch: TorchController,
@@ -27,7 +28,6 @@ class AudioPipelineManager(
     private var currentSource: AudioSource? = null
     private var restarting = false
 
-    // 50Hz loop for less latency (works well with Visualizer + mic chunk ~30ms)
     private val tickMs = 20L
 
     override fun start(scope: CoroutineScope, ui: StateFlow<AppUiState>) {
@@ -66,6 +66,8 @@ class AudioPipelineManager(
         job = scope.launch {
             src.start()
 
+            var lastLevel = 0f
+
             while (isActive) {
                 val state = ui.value
                 val settings = state.settings
@@ -82,27 +84,35 @@ class AudioPipelineManager(
                     break
                 }
 
-                // Demo source drives itself
-                if (src is DemoAudioSource) {
-                    src.tick()
-                } else if (src is com.denysshulhin.pulsetorch.data.pipeline.mic.MicAudioSource) {
-                    // Mic read blocks, no extra delay
-                } else {
-                    delay(tickMs)
+                delay(tickMs)
+
+                val feat = src.readFeatures()
+                if (feat == null) {
+                    // hard fall to zero if source not producing data
+                    lastLevel = fallToZero(lastLevel, 0.25f)
+                    onSignal(0f)
+                    torch.setLevel(lastLevel)
+                    torch.setEnabled(lastLevel > 0.02f)
+                    continue
                 }
 
-                val amp = src.readAmplitude01() ?: continue
-
-                val a = analyzer.process(amp, settings)
+                val a = analyzer.process(feat, settings)
                 val e = engine.process(a, settings)
 
-                onSignal(a.normalized)
+                onSignal(a.env01)
 
                 val level = e.level.coerceIn(0f, 1f)
+                lastLevel = level
+
                 torch.setLevel(level)
-                torch.setEnabled(level > 0.01f)
+                torch.setEnabled(level > 0.02f)
             }
         }
+    }
+
+    private fun fallToZero(x: Float, speed: Float): Float {
+        val s = speed.coerceIn(0.05f, 0.7f)
+        return max(0f, x - s)
     }
 
     private fun restart(newMode: Mode) {

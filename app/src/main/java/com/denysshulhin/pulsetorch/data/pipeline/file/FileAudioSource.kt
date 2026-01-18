@@ -2,6 +2,7 @@ package com.denysshulhin.pulsetorch.data.pipeline.file
 
 import android.net.Uri
 import androidx.media3.common.util.UnstableApi
+import com.denysshulhin.pulsetorch.data.pipeline.AudioFeatures
 import com.denysshulhin.pulsetorch.data.pipeline.AudioSource
 
 @UnstableApi
@@ -16,7 +17,6 @@ class FileAudioSource(
             onMissingUri?.invoke()
             return
         }
-
         controller.ensurePlayer()
         controller.prepare(uri)
         controller.play()
@@ -26,7 +26,15 @@ class FileAudioSource(
         controller.pause()
     }
 
-    override fun readAmplitude01(): Float? {
-        return controller.latestAmplitude01()
+    override fun readFeatures(): AudioFeatures? {
+        // Никогда не трогаем ExoPlayer.
+        if (!controller.isActuallyPlaying()) {
+            return AudioFeatures(energy01 = 0f, flux01 = 0f)
+        }
+
+        return AudioFeatures(
+            energy01 = controller.latestEnergy01(),
+            flux01 = controller.latestFlux01()
+        )
     }
 }

@@ -1,107 +1,196 @@
 package com.denysshulhin.pulsetorch.data.pipeline
 
+import android.os.SystemClock
 import com.denysshulhin.pulsetorch.domain.model.AppSettings
+import kotlin.math.abs
 import kotlin.math.max
-import kotlin.math.sqrt
+import kotlin.math.min
+import kotlin.math.sin
 
 class BasicAudioAnalyzer(
-    private val sampleRateFps: Int = 50,
-    private val rmsWindowMs: Int = 90,
+    // fps оставляем, но используем как fallback
+    private val fps: Int = 60
 ) : Analyzer {
 
-    private val windowSize = max(6, (sampleRateFps * rmsWindowMs / 1000f).toInt())
-    private val sq = FloatArray(windowSize)
-    private var idx = 0
-    private var sumSq = 0f
+    private var tMs: Long = 0L
+    private var lastWallMs: Long = 0L
 
-    private var noiseFloor = 0.02f
-    private var gateOpen = false
-
+    // Envelope (после AGC)
     private var env = 0f
-    private var agcGain = 1f
-    private var ema = 0f
+
+    // AGC
+    private var envMean = 0.12f   // “типичная громкость”
+    private var envPeak = 0.25f   // для компрессии/нормализации
+
+    // Flux
+    private var fluxEma = 0f
+    private var fluxMean = 0.05f
+
+    // Beat tracking
+    private var lastBeatMs: Long = -1L
+    private var ioiMs: Float = 600f // ~100 bpm
+    private var beatConf = 0f
+
+    private var onsetHoldMs: Long = 0L
+
+    // Breathe
+    private var breathePhase = 0f
+
+    // extra: fallback flux from energy deltas (helps file tracks)
+    private var prevEnergy = 0f
 
     override fun reset() {
-        for (i in sq.indices) sq[i] = 0f
-        idx = 0
-        sumSq = 0f
-
-        noiseFloor = 0.02f
-        gateOpen = false
+        tMs = 0L
+        lastWallMs = 0L
 
         env = 0f
-        agcGain = 1f
-        ema = 0f
+        envMean = 0.12f
+        envPeak = 0.25f
+
+        fluxEma = 0f
+        fluxMean = 0.05f
+
+        lastBeatMs = -1L
+        ioiMs = 600f
+        beatConf = 0f
+
+        onsetHoldMs = 0L
+        breathePhase = 0f
+        prevEnergy = 0f
     }
 
-    override fun process(amplitude: Float, settings: AppSettings): AnalyzerOutput {
-        val raw = amplitude.coerceIn(0f, 1f)
+    override fun process(f: AudioFeatures, settings: AppSettings): AnalyzerOutput {
+        // --- real dt (fixes mismatch with pipeline tick) ---
+        val now = SystemClock.elapsedRealtime()
+        val dtMs = if (lastWallMs == 0L) {
+            (1000f / fps).toLong().coerceAtLeast(10L)
+        } else {
+            (now - lastWallMs).coerceIn(10L, 60L)
+        }
+        lastWallMs = now
+        tMs += dtMs
 
-        // RMS
-        val x2 = raw * raw
-        sumSq -= sq[idx]
-        sq[idx] = x2
-        sumSq += x2
-        idx++
-        if (idx >= windowSize) idx = 0
-        val rms = sqrt(max(0f, sumSq / windowSize.toFloat())).coerceIn(0f, 1f)
+        val smoothing = settings.smoothing.coerceIn(0f, 1f)
+        val sens = settings.sensitivity.coerceIn(0f, 1f)
 
-        // Noise floor learn (slow)
-        val learn = rms < noiseFloor * 1.35f + 0.02f
-        if (learn) {
-            noiseFloor = lerp(noiseFloor, rms, 0.012f).coerceIn(0.0f, 0.25f)
+        val energyIn = f.energy01.coerceIn(0f, 1f)
+        val fluxIn = f.flux01.coerceIn(0f, 1f)
+
+        // --- Silence detection (more tolerant) ---
+        val isSilence = energyIn < 0.010f && fluxIn < 0.015f
+
+        // --- AGC / normalization ---
+        // mean follows slowly, peak a bit faster
+        envMean = lerp(envMean, energyIn, if (isSilence) 0.02f else 0.008f).coerceIn(0.02f, 0.40f)
+        envPeak = max(envPeak * 0.995f, energyIn).coerceIn(0.05f, 0.90f)
+
+        // target makes quiet songs visible, loud songs not always maxed
+        val target = lerp(0.18f, 0.30f, sens)
+        val gain = (target / max(0.03f, envMean)).coerceIn(0.7f, 3.2f)
+
+        val energy = (energyIn * gain).coerceIn(0f, 1f)
+
+        // --- Envelope follower (attack/release) ---
+        val attack = lerp(0.40f, 0.80f, 1f - smoothing)   // sharper when smoothing low
+        val release = if (isSilence) 0.32f else lerp(0.05f, 0.16f, smoothing)
+        env = if (energy >= env) lerp(env, energy, attack) else lerp(env, energy, release)
+        env = env.coerceIn(0f, 1f)
+
+        // --- Flux: combine provided flux + energy delta (stabilizes reactions) ---
+        val dE = abs(energy - prevEnergy)
+        prevEnergy = energy
+
+        val fluxRaw = max(fluxIn, (dE * 1.6f).coerceIn(0f, 1f))
+        val fluxAlpha = if (isSilence) 0.35f else 0.22f
+        fluxEma = lerp(fluxEma, fluxRaw, fluxAlpha).coerceIn(0f, 1f)
+        fluxMean = lerp(fluxMean, fluxEma, if (isSilence) 0.02f else 0.01f).coerceIn(0.01f, 0.28f)
+
+        // --- Onset threshold (more sensitive) ---
+        val mul = lerp(1.55f, 1.05f, sens)
+        val th = (fluxMean * mul + lerp(0.012f, 0.006f, sens)).coerceIn(0.020f, 0.32f)
+
+        val canTrigger = tMs >= onsetHoldMs
+        val onset = !isSilence && canTrigger && (fluxEma > th) && (fluxEma > fluxMean + 0.012f)
+
+        if (onset) {
+            // keep double-triggers away, but allow 200+ bpm
+            val hold = lerp(95f, 35f, sens).toLong()
+            onsetHoldMs = tMs + hold
+            registerBeatCandidate()
+        } else {
+            val dec = if (isSilence) 0.030f else 0.010f
+            beatConf = (beatConf - dec).coerceIn(0f, 1f)
         }
 
-        // Gate
-        val sensitivity = settings.sensitivity.coerceIn(0f, 1f)
-        val gateBase = (0.075f - 0.055f * sensitivity).coerceIn(0.015f, 0.10f)
-        val openTh = max(gateBase, noiseFloor * 1.6f)
-        val closeTh = max(gateBase * 0.75f, noiseFloor * 1.25f)
+        val phase01 = computePhase01()
 
-        gateOpen = if (gateOpen) rms > closeTh else rms > openTh
-        val gated = if (gateOpen) rms else 0f
+        // --- Breathe only when beat weak ---
+        val breatheHz = (0.30f + 0.90f * env).coerceIn(0.25f, 1.35f)
+        breathePhase = (breathePhase + (breatheHz * dtMs.toFloat() / 1000f)) % 1f
+        val breathe01 = smoothSin01(breathePhase)
 
-        // Envelope follower
-        val smoothing = settings.smoothing.coerceIn(0f, 1f)
-        val attack = (0.55f - 0.25f * smoothing).coerceIn(0.25f, 0.65f)
-        val release = (0.10f + 0.18f * smoothing).coerceIn(0.08f, 0.30f)
-        env = if (gated >= env) lerp(env, gated, attack) else lerp(env, gated, release)
-        val envClamped = env.coerceIn(0f, 1f)
-
-        // Bass focus (simple shaping)
-        val shaped = if (settings.bassFocus) {
-            val t = envClamped
-            (t * t * (2.1f - 1.1f * t)).coerceIn(0f, 1f)
-        } else envClamped
-
-        // AGC
-        val target = 0.50f
-        val measured = max(0.001f, shaped)
-        val desiredGain = (target / measured).coerceIn(0.6f, 6.0f)
-        agcGain = lerp(agcGain, desiredGain, 0.015f).coerceIn(0.6f, 6.0f)
-
-        var normalized = (shaped * agcGain).coerceIn(0f, 1f)
-        normalized = softClip(normalized, knee = 0.84f)
-
-        // final EMA
-        val emaAlpha = (0.14f + 0.28f * smoothing).coerceIn(0.12f, 0.42f)
-        ema = lerp(ema, normalized, emaAlpha)
-        val out = ema.coerceIn(0f, 1f)
+        val tempo = bpmFromIoi(ioiMs)
 
         return AnalyzerOutput(
-            raw = raw,
-            gated = gated,
-            smoothed = out,
-            normalized = out
+            energy01 = energy,
+            flux01 = fluxEma,
+            env01 = env,
+            beat01 = beatConf,
+            tempoBpm = tempo,
+            phase01 = phase01,
+            breathe01 = breathe01
         )
     }
 
-    private fun lerp(a: Float, b: Float, t: Float): Float = a + (b - a) * t
+    private fun registerBeatCandidate() {
+        val now = tMs
 
-    private fun softClip(x: Float, knee: Float): Float {
-        val v = x.coerceIn(0f, 1f)
-        if (v <= knee) return v
-        val t = (v - knee) / max(0.0001f, (1f - knee))
-        return (knee + (1f - knee) * (t / (1f + t))).coerceIn(0f, 1f)
+        if (lastBeatMs > 0) {
+            val diff = (now - lastBeatMs).toFloat()
+
+            // accept wider bpm: 35..220 (helps club tracks)
+            if (diff in 273f..1715f) {
+                val expected = ioiMs
+                val ratio = diff / max(1f, expected)
+
+                val corrected = when {
+                    ratio > 1.85f -> diff * 0.5f
+                    ratio < 0.60f -> diff * 2.0f
+                    else -> diff
+                }
+
+                ioiMs = lerp(ioiMs, corrected, 0.18f).coerceIn(273f, 1715f)
+                beatConf = (beatConf + 0.22f).coerceIn(0f, 1f)
+            } else {
+                beatConf = (beatConf - 0.05f).coerceIn(0f, 1f)
+            }
+        } else {
+            beatConf = (beatConf + 0.12f).coerceIn(0f, 1f)
+        }
+
+        lastBeatMs = now
     }
+
+    private fun computePhase01(): Float {
+        val lb = lastBeatMs
+        if (lb <= 0) return 0.5f
+
+        val dt = (tMs - lb).toFloat()
+        val period = ioiMs.coerceIn(273f, 1715f)
+        val p = (dt / period).coerceIn(0f, 4f)
+        return (p % 1f).coerceIn(0f, 1f)
+    }
+
+    private fun bpmFromIoi(ioiMs: Float): Float? {
+        if (ioiMs <= 0f) return null
+        val bpm = 60000f / ioiMs
+        return bpm.coerceIn(35f, 220f)
+    }
+
+    private fun smoothSin01(p: Float): Float {
+        val x = (sin(2f * Math.PI.toFloat() * p) * 0.5f + 0.5f)
+        return x * x * (3f - 2f * x)
+    }
+
+    private fun lerp(a: Float, b: Float, t: Float): Float = a + (b - a) * t
 }

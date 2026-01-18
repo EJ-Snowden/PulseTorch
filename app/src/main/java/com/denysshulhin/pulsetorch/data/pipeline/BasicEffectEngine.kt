@@ -1,69 +1,90 @@
 package com.denysshulhin.pulsetorch.data.pipeline
 
 import com.denysshulhin.pulsetorch.domain.model.AppSettings
-import kotlin.math.PI
 import kotlin.math.max
-import kotlin.math.sin
+import kotlin.math.min
 
 class BasicEffectEngine : EffectEngine {
 
-    private var lastX = 0f
-    private var lastLevel = 0f
-
-    private var peakEma = 0f
-    private var phase = 0f
+    private var last = 0f
 
     override fun reset() {
-        lastX = 0f
-        lastLevel = 0f
-        peakEma = 0f
-        phase = 0f
+        last = 0f
     }
 
-    override fun process(input: AnalyzerOutput, settings: AppSettings): EffectOutput {
-        val x = input.normalized.coerceIn(0f, 1f)
+    override fun process(a: AnalyzerOutput, settings: AppSettings): EffectOutput {
+        val env = a.env01.coerceIn(0f, 1f)
+        val beat = a.beat01.coerceIn(0f, 1f)
+        val phase = a.phase01.coerceIn(0f, 1f)
+        val breathe = a.breathe01.coerceIn(0f, 1f)
 
-        // detect "beatiness" from slope
-        val dx = (x - lastX)
-        lastX = x
+        // If almost silence - truly off (fix "always on")
+        val silence = env < 0.012f && beat < 0.10f
+        if (silence) {
+            last = lerp(last, 0f, 0.35f)
+            return EffectOutput(level = last)
+        }
 
-        val peak = max(0f, dx * 3.2f).coerceIn(0f, 1f)
-        peakEma = lerp(peakEma, peak, 0.22f)
-        val beatiness = peakEma.coerceIn(0f, 1f)
+        // 1) Visible smooth brightness from env (compress quiet parts up)
+        // gamma < 1 makes quiet tracks still move
+        val envShaped = powApprox(env, 0.62f)
+        val base = envShaped.coerceIn(0f, 1f)
 
-        // base smooth brightness
-        val smoothness = settings.smoothness.coerceIn(0f, 1f)
-        val alpha = (0.55f - 0.40f * smoothness).coerceIn(0.12f, 0.60f)
-        val base = lerp(lastLevel, x, alpha)
+        // 2) When beat is weak, add gentle motion (multiply so silence stays off)
+        val beatWeak = (1f - beat).coerceIn(0f, 1f)
+        val motion = lerp(0.78f, 1.00f, breathe)  // 0.78..1
+        val baseWithMotion = base * lerp(1.00f, motion, beatWeak)
 
-        // pulse and strobe parts (blend)
-        val maxHz = settings.maxStrobeHz.coerceIn(2f, 20f)
-        val hz = (2.0f + (maxHz - 2.0f) * beatiness).coerceIn(2f, maxHz)
+        // 3) Pulse (adds on top of base around beat)
+        val pulse = pulseFromPhase(phase) // 0..1
+        val pulseStrength = smooth01((beat - 0.08f) / 0.60f) // starts earlier
+        val pulseAdd = pulse * pulseStrength * (0.35f + 0.65f * baseWithMotion)
+        val pulsed = clamp01(baseWithMotion + pulseAdd * (1f - baseWithMotion))
 
-        // assume 50fps loop
-        phase = advance(phase, hz, dt = 1f / 50f)
+        // 4) Strobe gate only when beat confident
+        // Keep envelope always visible in parallel
+        val strobeStrength = smooth01((beat - 0.22f) / 0.55f)
+        val duty = lerp(0.60f, 0.14f, strobeStrength) // strong beat -> narrower flashes
+        val gate = if (phase < duty) 1f else 0f
 
-        val sine01 = (sin(2f * PI.toFloat() * phase) * 0.5f + 0.5f)
+        // keep-part ensures you still see smooth brightness even during strobe
+        val keep = lerp(0.85f, 0.30f, strobeStrength)
+        val strobed = if (strobeStrength > 0f) {
+            pulsed * (keep + (1f - keep) * gate)
+        } else {
+            pulsed
+        }
 
-        val pulse = (0.10f + 0.90f * sine01) * x
-        val strobe = if (phase < 0.18f) x else 0f
+        // 5) Low-latency smoothing
+        val smoothing = settings.smoothing.coerceIn(0f, 1f)
+        val t = lerp(0.40f, 0.18f, smoothing)
+        val out = lerp(last, strobed, t).coerceIn(0f, 1f)
+        last = out
 
-        // weights
-        val strobeW = ((beatiness - 0.55f) / 0.35f).coerceIn(0f, 1f) * x
-        val pulseW = ((beatiness - 0.18f) / 0.40f).coerceIn(0f, 1f) * (1f - strobeW)
-        val baseW = (1f - strobeW - pulseW).coerceIn(0f, 1f)
-
-        val out = (base * baseW + pulse * pulseW + strobe * strobeW).coerceIn(0f, 1f)
-        lastLevel = out
-
-        return EffectOutput(level = out, hz = hz)
+        return EffectOutput(level = out)
     }
+
+    private fun pulseFromPhase(phase01: Float): Float {
+        val x = phase01.coerceIn(0f, 1f)
+        val k = 7.5f
+        val v = 1f / (1f + k * x)
+        return (v * v).coerceIn(0f, 1f)
+    }
+
+    private fun smooth01(x: Float): Float {
+        val v = x.coerceIn(0f, 1f)
+        return v * v * (3f - 2f * v)
+    }
+
+    private fun clamp01(x: Float): Float = min(1f, max(0f, x))
 
     private fun lerp(a: Float, b: Float, t: Float): Float = a + (b - a) * t
 
-    private fun advance(p: Float, hz: Float, dt: Float): Float {
-        var np = p + hz * dt
-        if (np >= 1f) np -= np.toInt()
-        return np
+    // fast-ish pow approximation for gamma in 0.5..0.9
+    private fun powApprox(x: Float, g: Float): Float {
+        val v = x.coerceIn(0f, 1f)
+        // simple 2-step curve: mix sqrt and linear
+        val s = kotlin.math.sqrt(v)
+        return lerp(v, s, ((1f - g) / 0.5f).coerceIn(0f, 1f))
     }
 }
